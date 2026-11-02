@@ -37,7 +37,9 @@ Element to edit:
 ${html}`;
 }
 
-const clean = (s) => String(s || '').trim().replace(/^```(?:html)?\s*/i, '').replace(/```\s*$/, '').trim();
+const clean = (s) => String(s || '')
+  .replace(/<think>[\s\S]*?<\/think>/gi, '') // reasoning models (e.g. DeepSeek) may include their thinking
+  .trim().replace(/^```(?:html)?\s*/i, '').replace(/```\s*$/, '').trim();
 
 const TIMEOUT = Number(process.env.AI_TIMEOUT_MS || 90000);
 // Turn "thinking" off for speed. Newer models use thinkingLevel, older ones thinkingBudget; try each, remember what works.
