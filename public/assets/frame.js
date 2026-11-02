@@ -30,6 +30,13 @@
 
   // ---- element classification ------------------------------------------------------
   const target = (node) => (node && node.closest ? node.closest(`[${ID}]`) : null);
+  // A click on a formatting tag (em, strong, span…) selects the whole text block around it
+  const FORMAT = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'S', 'SPAN', 'SMALL', 'SUP', 'SUB', 'MARK', 'CODE', 'ABBR', 'TIME', 'BR']);
+  const pick = (node) => {
+    let el = target(node);
+    while (el && FORMAT.has(el.tagName) && el.parentElement) { const up = target(el.parentElement); if (!up) break; el = up; }
+    return el;
+  };
   const hasText = (el) => (el.textContent || '').trim().length > 0;
   const inlineOnly = (el) => [...el.querySelectorAll('*')].every((c) => INLINE.has(c.tagName.toUpperCase()) || c.closest('svg'));
   const canText = (el) => !['IMG', 'INPUT', 'SELECT', 'TEXTAREA', 'IFRAME', 'VIDEO', 'SVG'].includes(el.tagName) && hasText(el) && inlineOnly(el);
@@ -41,6 +48,23 @@
     return 'block';
   }
   const NAMES = { image: 'Image', link: 'Link', 'link-block': 'Link', button: 'Button', text: 'Text', block: 'Section' };
+  const hex = (c) => {
+    const m = String(c).match(/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?/);
+    if (!m || (m[4] !== undefined && Number(m[4]) === 0)) return null;
+    return '#' + [m[1], m[2], m[3]].map((n) => Math.round(Number(n)).toString(16).padStart(2, '0')).join('');
+  };
+  // the element's own background, or the first visible one behind it (for a sensible colour picker default)
+  const bgOf = (el) => { for (let n = el; n && n.nodeType === 1; n = n.parentElement) { const h = hex(getComputedStyle(n).backgroundColor); if (h) return { color: h, own: n === el }; } return { color: '#ffffff', own: false }; };
+  function styleOf(el) {
+    const cs = getComputedStyle(el);
+    const bg = bgOf(el);
+    return {
+      color: hex(cs.color) || '#000000', bg: bg.color, bgOwn: bg.own,
+      fontSize: Math.round(parseFloat(cs.fontSize)), fontWeight: Number(cs.fontWeight) || 400, textAlign: cs.textAlign,
+      radius: Math.round(parseFloat(cs.borderTopLeftRadius) || 0), padY: Math.round(parseFloat(cs.paddingTop) || 0), padX: Math.round(parseFloat(cs.paddingLeft) || 0),
+      inline: el.getAttribute('style') || '',
+    };
+  }
   function describe(el) {
     const k = kind(el);
     const a = el.tagName === 'A' ? el : el.closest('a[' + ID + ']');
@@ -54,6 +78,7 @@
       hasBg: bgImg && bgImg !== 'none',
       parentId: el.parentElement ? target(el.parentElement)?.getAttribute(ID) || null : null,
       hasPrev: !!el.previousElementSibling, hasNext: !!el.nextElementSibling,
+      style: styleOf(el),
     };
   }
 
@@ -108,7 +133,7 @@
   const isUi = (n) => n && n.closest && n.closest('[data-ili-ui]');
   document.addEventListener('mouseover', (e) => {
     if (mode !== 'edit' || isUi(e.target)) return;
-    const el = target(e.target);
+    const el = pick(e.target);
     if (el && el !== selected && el !== editing) place(hoverBox, el); else hoverBox.style.display = 'none';
   }, true);
   document.addEventListener('mouseout', (e) => { if (!e.relatedTarget) hoverBox.style.display = 'none'; }, true);
@@ -117,12 +142,12 @@
       if (mode !== 'edit' || isUi(e.target)) return;
       if (editing && editing.contains(e.target)) return; // let the caret move inside the text
       e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-      if (type === 'click') { const el = target(e.target); hoverBox.style.display = 'none'; select(el); }
+      if (type === 'click') { const el = pick(e.target); hoverBox.style.display = 'none'; select(el); }
     }, true);
   }
   document.addEventListener('dblclick', (e) => {
     if (mode !== 'edit') return;
-    const el = target(e.target);
+    const el = pick(e.target);
     if (el && canText(el)) { e.preventDefault(); e.stopPropagation(); select(el); startEdit(el); }
   }, true);
   document.addEventListener('keydown', (e) => {
@@ -166,6 +191,12 @@
         if (m.value === null || m.value === '') el.removeAttribute(m.name); else el.setAttribute(m.name, m.value);
         if (m.name === 'src' && el.tagName === 'IMG') { el.removeAttribute('srcset'); el.closest('picture')?.querySelectorAll('source').forEach((s) => s.remove()); }
         if (el === selected) post({ type: 'select', info: describe(el) });
+        break;
+      }
+      case 'style': {
+        const el = byId(m.id); if (!el) break;
+        for (const [k, v] of Object.entries(m.props || {})) { if (v === null || v === '') el.style.removeProperty(k); else el.style.setProperty(k, v); }
+        if (el === selected && m.notify) post({ type: 'select', info: describe(el) });
         break;
       }
       case 'scrollTo': window.scrollTo(0, m.y || 0); break;

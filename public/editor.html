@@ -89,6 +89,36 @@
           <label class="check"><input type="checkbox" id="blank" /> Open in a new tab</label>
         </div>
 
+        <div class="group" id="gStyle">
+          <h3>Style <button class="btn btn-sm reset" id="resetStyle" title="Remove the styles added here">Reset</button></h3>
+          <div class="sgrid">
+            <label class="sfield"><span>Text colour</span><span class="color"><input type="color" id="sColor" /><input class="input mono" id="sColorHex" maxlength="7" spellcheck="false" /></span></label>
+            <label class="sfield"><span>Background</span><span class="color"><input type="color" id="sBg" /><input class="input mono" id="sBgHex" maxlength="7" spellcheck="false" /></span></label>
+          </div>
+          <div class="sfield">
+            <span>Text size <b class="mono" id="sSizeVal"></b></span>
+            <input type="range" id="sSize" min="10" max="96" step="1" />
+          </div>
+          <div class="sgrid">
+            <label class="sfield"><span>Weight</span>
+              <select class="input" id="sWeight"><option value="300">Light</option><option value="400">Regular</option><option value="500">Medium</option><option value="600">Semibold</option><option value="700">Bold</option><option value="800">Extra bold</option></select>
+            </label>
+            <div class="sfield"><span>Align</span>
+              <div class="seg al" role="group" aria-label="Text alignment">
+                <button data-align="left" title="Left">⇤</button><button data-align="center" title="Centre">↔</button><button data-align="right" title="Right">⇥</button>
+              </div>
+            </div>
+          </div>
+          <div class="sfield">
+            <span>Rounded corners <b class="mono" id="sRadiusVal"></b></span>
+            <input type="range" id="sRadius" min="0" max="60" step="1" />
+          </div>
+          <div class="sgrid">
+            <label class="sfield"><span>Inner space ↕</span><input class="input" type="number" id="sPadY" min="0" max="200" /></label>
+            <label class="sfield"><span>Inner space ↔</span><input class="input" type="number" id="sPadX" min="0" max="200" /></label>
+          </div>
+        </div>
+
         <div class="group" id="gBlock">
           <h3>Arrange</h3>
           <div class="row">

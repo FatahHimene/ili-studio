@@ -62,13 +62,42 @@ export function sanitizeInline(fragment) {
   return root.html() ?? '';
 }
 
+// ---- inline styles ------------------------------------------------------------
+const STYLE_OK = new Set(['color', 'background-color', 'background-image', 'font-size', 'font-weight', 'font-style', 'text-align', 'text-transform',
+  'letter-spacing', 'line-height', 'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'margin-top', 'margin-bottom',
+  'border-radius', 'border', 'border-color', 'border-width', 'border-style', 'width', 'max-width', 'opacity']);
+
+function parseStyle(str) {
+  const map = new Map();
+  for (const part of String(str || '').split(';')) {
+    const i = part.indexOf(':'); if (i < 0) continue;
+    const k = part.slice(0, i).trim().toLowerCase(); const v = part.slice(i + 1).trim();
+    if (k && v) map.set(k, v);
+  }
+  return map;
+}
+const safeValue = (v) => typeof v === 'string' && v.length <= 200 && !/[;{}<>\\]|expression|javascript|@import/i.test(v) &&
+  (!/url\(/i.test(v) || /^url\((['"]?)(?!\s*(javascript|data:text))[^'")]+\1\)$/i.test(v.trim()));
+
+export function mergeStyle(current, props) {
+  const map = parseStyle(current);
+  for (const [k0, v] of Object.entries(props || {})) {
+    const k = k0.toLowerCase();
+    if (!STYLE_OK.has(k)) throw new Error('Style not editable: ' + k);
+    if (v === null || v === '') map.delete(k);
+    else if (!safeValue(String(v))) throw new Error('Unsafe style value');
+    else map.set(k, String(v).trim());
+  }
+  return [...map].map(([k, v]) => `${k}: ${v}`).join('; ');
+}
+
 // ---- edit operations --------------------------------------------------------
 const ATTRS_EDITABLE = new Set(['src', 'alt', 'href', 'target', 'title', 'srcset', 'rel']);
 
 /**
  * Apply a list of operations to a page.
  * ops: {type:'html', id, html} | {type:'attr', id, name, value} | {type:'remove', id}
- *      {type:'duplicate', id} | {type:'move', id, dir:'up'|'down'}
+ *      {type:'duplicate', id} | {type:'move', id, dir:'up'|'down'} | {type:'style', id, props:{'color':'#fff', ...}}
  */
 export function applyOps(html, ops) {
   const $ = load(html);
@@ -97,6 +126,11 @@ export function applyOps(html, ops) {
         if (value === null || value === '') el.removeAttr(name); else el.attr(name, value);
         if (name === 'src' && el.is('img')) { el.removeAttr('srcset'); el.parent('picture').find('source').remove(); }
         if (name === 'target' && value === '_blank') el.attr('rel', 'noopener');
+        break;
+      }
+      case 'style': {
+        const style = mergeStyle(el.attr('style'), op.props);
+        if (style) el.attr('style', style); else el.removeAttr('style');
         break;
       }
       case 'remove': {

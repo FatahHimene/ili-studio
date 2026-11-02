@@ -73,6 +73,7 @@ async function undo() {
 
 // ---- inspector ----------------------------------------------------------------------------
 function show(info) {
+  if (pending.id && (!info || info.id !== pending.id)) flushStyle();
   state.sel = info;
   $('#empty').hidden = !!info; $('#sel').hidden = !info;
   if (!info) return;
@@ -88,6 +89,59 @@ function show(info) {
   $('#moveUp').disabled = !info.hasPrev; $('#moveDown').disabled = !info.hasNext;
   const root = ['body', 'html', 'main'].includes(info.tag);
   $('#del').disabled = root; $('#dup').disabled = root;
+  fillStyle(info.style);
+}
+
+// ---- style panel: live preview in the frame, saved after a short pause ---------------------
+const pending = { id: null, props: {}, timer: 0 };
+function flushStyle() {
+  clearTimeout(pending.timer);
+  if (!pending.id || !Object.keys(pending.props).length) return;
+  const op = { type: 'style', id: pending.id, props: pending.props };
+  pending.props = {};
+  ops([op]).catch(() => {});
+}
+function live(props) {
+  if (!state.sel) return;
+  if (pending.id !== state.sel.id) { flushStyle(); pending.id = state.sel.id; }
+  Object.assign(pending.props, props);
+  tell({ cmd: 'style', id: state.sel.id, props });
+  clearTimeout(pending.timer); pending.timer = setTimeout(flushStyle, 500);
+}
+function fillStyle(st) {
+  if (!st) return;
+  $('#sColor').value = st.color; $('#sColorHex').value = st.color;
+  $('#sBg').value = st.bg; $('#sBgHex').value = st.bgOwn ? st.bg : '';
+  $('#sBgHex').placeholder = st.bgOwn ? '' : 'none';
+  $('#sSize').value = st.fontSize; $('#sSizeVal').textContent = st.fontSize + 'px';
+  const w = [300, 400, 500, 600, 700, 800].reduce((a, b) => (Math.abs(b - st.fontWeight) < Math.abs(a - st.fontWeight) ? b : a));
+  $('#sWeight').value = String(w);
+  document.querySelectorAll('[data-align]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.align === (st.textAlign === 'start' ? 'left' : st.textAlign))));
+  $('#sRadius').value = st.radius; $('#sRadiusVal').textContent = st.radius + 'px';
+  $('#sPadY').value = st.padY; $('#sPadX').value = st.padX;
+}
+const isHex = (v) => /^#[0-9a-f]{6}$/i.test(v);
+$('#sColor').oninput = (e) => { $('#sColorHex').value = e.target.value; live({ color: e.target.value }); };
+$('#sColorHex').onchange = (e) => { const v = e.target.value.trim(); if (isHex(v)) { $('#sColor').value = v; live({ color: v }); } else toast('Use a colour like #1E3A6E', true); };
+$('#sBg').oninput = (e) => { $('#sBgHex').value = e.target.value; live({ 'background-color': e.target.value }); };
+$('#sBgHex').onchange = (e) => {
+  const v = e.target.value.trim();
+  if (!v) live({ 'background-color': null }); else if (isHex(v)) { $('#sBg').value = v; live({ 'background-color': v }); } else toast('Use a colour like #C8F031, or leave empty', true);
+};
+$('#sSize').oninput = (e) => { $('#sSizeVal').textContent = e.target.value + 'px'; live({ 'font-size': e.target.value + 'px' }); };
+$('#sWeight').onchange = (e) => live({ 'font-weight': e.target.value });
+document.querySelectorAll('[data-align]').forEach((b) => b.onclick = () => {
+  document.querySelectorAll('[data-align]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+  live({ 'text-align': b.dataset.align });
+});
+$('#sRadius').oninput = (e) => { $('#sRadiusVal').textContent = e.target.value + 'px'; live({ 'border-radius': e.target.value + 'px' }); };
+const pad = () => live({ padding: `${Math.max(0, Number($('#sPadY').value) || 0)}px ${Math.max(0, Number($('#sPadX').value) || 0)}px` });
+$('#sPadY').onchange = pad; $('#sPadX').onchange = pad;
+$('#resetStyle').onclick = () => {
+  if (!state.sel) return;
+  const props = { color: null, 'background-color': null, 'font-size': null, 'font-weight': null, 'text-align': null, 'border-radius': null, padding: null };
+  live(props); flushStyle();
+  tell({ cmd: 'style', id: state.sel.id, props: {}, notify: true });
 }
 
 async function setAttr(elId, name, value) {

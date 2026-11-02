@@ -41,3 +41,16 @@ body { display: flex; flex-direction: column; }
 
 @media (max-width: 1100px) { .seg[aria-label='Device'], .bar .logo { display: none; } .name { width: 140px; } }
 @media (max-width: 800px) { .panel { width: 260px; } .status { display: none; } }
+
+.group h3 .reset { margin-left: auto; padding: 4px 8px; font-size: 12px; }
+.sgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.sfield { display: grid; gap: 6px; font-size: 13px; }
+.sfield > span:first-child { font-weight: 600; display: flex; justify-content: space-between; }
+.sfield b { font-weight: 500; color: var(--slate); font-size: 12px; }
+.color { display: flex; align-items: center; gap: 6px; }
+.color input[type=color] { width: 36px; height: 36px; padding: 2px; border: 1px solid var(--ink); border-radius: var(--r); background: var(--white); cursor: pointer; flex: none; }
+.color .input { padding: 8px; font-size: 12px; min-width: 0; }
+input[type=range] { width: 100%; accent-color: var(--ink); }
+.seg.al { width: 100%; }
+.seg.al button { flex: 1; font-size: 15px; }
+#sel select.input { padding: 8px; font-size: 13px; }
