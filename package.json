@@ -1,0 +1,28 @@
+{
+  "name": "ili-studio",
+  "version": "0.1.0",
+  "description": "ili studio prototype: import, click-to-edit and publish websites",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FatahHimene/ili-studio.git"
+  },
+  "bugs": {
+    "url": "https://github.com/FatahHimene/ili-studio/issues"
+  },
+  "homepage": "https://github.com/FatahHimene/ili-studio#readme",
+  "dependencies": {
+    "adm-zip": "^0.6.1",
+    "cheerio": "^1.2.0",
+    "express": "^5.3.0",
+    "multer": "^2.5.0"
+  },
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  }
+}

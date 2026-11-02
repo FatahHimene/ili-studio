@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Sign in · ili studio</title>
+  <link rel="icon" href="/_ili/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/_ili/app.css" />
+  <style>
+    body { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+    .card { width: min(400px, 100%); background: var(--white); border: 1px solid var(--ink); border-radius: var(--r2); padding: 32px; box-shadow: 8px 8px 0 var(--signal); display: grid; gap: 20px; }
+    h1 { font-size: 30px; }
+    .err { color: var(--danger); font-size: 14px; }
+  </style>
+</head>
+<body class="grid-bg">
+  <form class="card" method="post" action="/login">
+    <span class="logo"><span class="i"><span class="cur"></span>ı</span>li studio</span>
+    <div><span class="label">Prototype</span><h1 style="margin-top:10px">Sign in</h1></div>
+    <p class="err" id="err" hidden></p>
+    <label class="field"><span>Password</span><input class="input" type="password" name="password" autocomplete="current-password" required autofocus /></label>
+    <button class="btn btn-primary" type="submit">Sign in →</button>
+  </form>
+  <script>
+    const e = new URLSearchParams(location.search).get('error');
+    if (e) { const el = document.getElementById('err'); el.textContent = e; el.hidden = false; }
+  </script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Your sites · ili studio</title>
+  <link rel="icon" href="/_ili/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/_ili/app.css" />
+  <style>
+    header { display: flex; align-items: center; gap: 16px; height: 64px; padding: 0 24px; background: rgba(246,247,249,.9); border-bottom: 1px solid var(--grid); position: sticky; top: 0; z-index: 5; backdrop-filter: blur(10px); }
+    header form { margin-left: auto; }
+    main { max-width: 1200px; margin: 0 auto; padding: 48px 24px 96px; }
+    .top { display: flex; justify-content: space-between; align-items: end; gap: 24px; margin-bottom: 32px; flex-wrap: wrap; }
+    .top h1 { font-size: 44px; margin-top: 10px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+    .drop { border: 1.5px dashed var(--ink); border-radius: var(--r2); background: var(--white); padding: 28px; display: grid; gap: 14px; align-content: center; min-height: 340px; transition: background .15s, box-shadow .15s; }
+    .drop.over { background: #F4FBDC; box-shadow: 6px 6px 0 var(--signal); }
+    .drop h2 { font-size: 24px; }
+    .drop .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .card { background: var(--white); border: 1px solid var(--ink); border-radius: var(--r2); overflow: hidden; display: flex; flex-direction: column; transition: transform .15s, box-shadow .15s; }
+    .card:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 var(--signal); }
+    .thumb { position: relative; height: 190px; overflow: hidden; border-bottom: 1px solid var(--ink); background: var(--paper); display: block; }
+    .thumb iframe { width: 1280px; height: 800px; border: 0; transform: scale(.25); transform-origin: 0 0; pointer-events: none; background: #fff; }
+    .thumb::after { content: ''; position: absolute; inset: 0; }
+    .meta { padding: 18px; display: grid; gap: 10px; flex: 1; }
+    .meta h3 { font-size: 19px; }
+    .facts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font: 400 12px var(--mono); color: var(--slate); }
+    .acts { display: flex; gap: 8px; padding: 0 18px 18px; flex-wrap: wrap; }
+    .acts .del { margin-left: auto; }
+    .progress { height: 4px; background: var(--grid); border-radius: 2px; overflow: hidden; }
+    .progress i { display: block; height: 100%; width: 0; background: var(--ink); transition: width .2s; }
+    .empty { color: var(--slate); }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="logo" href="/"><span class="i"><span class="cur"></span>ı</span>li studio<small>Prototype</small></a>
+    <form method="post" action="/logout"><button class="btn btn-sm" type="submit">Sign out</button></form>
+  </header>
+  <main>
+    <div class="top">
+      <div><span class="label">Your sites</span><h1>Bring a site. Edit anything.</h1></div>
+      <p class="muted" style="max-width:44ch;margin:0">Upload a ZIP or HTML file made with ChatGPT, Claude, Lovable or any tool. Then click any part of it to edit, and publish.</p>
+    </div>
+    <div class="grid" id="grid">
+      <form class="drop" id="drop">
+        <span class="label">New site</span>
+        <h2>Drop a .zip or .html file here</h2>
+        <p class="muted" style="margin:0">Or choose a file. Max 100 MB.</p>
+        <label class="field"><span>Site name (optional)</span><input class="input" name="name" placeholder="Leeds Plumbing" maxlength="80" /></label>
+        <input type="file" id="file" name="file" accept=".zip,.html,.htm" hidden />
+        <div class="row">
+          <button class="btn btn-primary" type="button" id="choose">Choose a file →</button>
+        </div>
+        <div class="progress" hidden id="prog"><i></i></div>
+        <p class="muted" id="status" style="margin:0;font-size:13px" aria-live="polite"></p>
+      </form>
+    </div>
+  </main>
+  <div class="toast" id="toast" role="status"></div>
+  <script src="/_ili/dashboard.js" type="module"></script>
+</body>
+</html>

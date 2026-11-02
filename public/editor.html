@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Editor · ili studio</title>
+  <link rel="icon" href="/_ili/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/_ili/app.css" />
+  <link rel="stylesheet" href="/_ili/editor.css" />
+</head>
+<body>
+  <header class="bar">
+    <a class="btn btn-icon btn-sm" href="/" aria-label="Back to your sites" title="Your sites">←</a>
+    <span class="logo" aria-hidden="true"><span class="i"><span class="cur"></span>ı</span>li</span>
+    <input class="name" id="siteName" aria-label="Site name" maxlength="80" />
+    <label class="sr" for="page">Page</label>
+    <select class="input page" id="page" aria-label="Page"></select>
+    <div class="seg" role="group" aria-label="Device">
+      <button data-dev="desktop" aria-pressed="true" title="Desktop">Desktop</button>
+      <button data-dev="tablet" aria-pressed="false" title="Tablet">Tablet</button>
+      <button data-dev="mobile" aria-pressed="false" title="Mobile">Mobile</button>
+    </div>
+    <div class="seg" role="group" aria-label="Mode">
+      <button data-mode="edit" aria-pressed="true">Edit</button>
+      <button data-mode="preview" aria-pressed="false">Preview</button>
+    </div>
+    <div class="right">
+      <span class="status" id="status" aria-live="polite">Loading…</span>
+      <button class="btn btn-sm" id="undo" title="Undo (Ctrl+Z)" disabled>↶ Undo</button>
+      <a class="btn btn-sm" id="live" target="_blank" rel="noopener" hidden>View live ↗</a>
+      <button class="btn btn-sm btn-primary" id="publish">Publish</button>
+    </div>
+  </header>
+
+  <div class="work">
+    <main class="canvas grid-bg" id="canvas">
+      <div class="device" id="device">
+        <iframe id="frame" title="Your site" sandbox="allow-scripts allow-forms allow-popups allow-modals"></iframe>
+      </div>
+    </main>
+
+    <aside class="panel" id="panel" aria-label="Inspector">
+      <section id="empty" class="pane">
+        <span class="label">Inspector</span>
+        <h2>Click anything on your page</h2>
+        <p class="muted">Select a heading, a paragraph, a photo, a button or a whole section to edit it.</p>
+        <ul class="tips">
+          <li><b>Double-click</b> a text to type straight into it</li>
+          <li><b>Enter</b> to save a text, <b>Esc</b> to cancel</li>
+          <li><b>Ctrl + Z</b> to undo</li>
+          <li>Use <b>Preview</b> to try links and menus</li>
+        </ul>
+      </section>
+
+      <section id="sel" class="pane" hidden>
+        <div class="selhead">
+          <span class="tag tag-live" id="selKind">Text</span>
+          <span class="mono muted" id="selTag">p</span>
+          <button class="btn btn-sm up" id="parentBtn" title="Select the element around this one">↑ Parent</button>
+        </div>
+
+        <div class="group" id="gText" hidden>
+          <h3>Text</h3>
+          <p class="muted small" id="textPreview"></p>
+          <div class="row">
+            <button class="btn btn-sm btn-dark" id="editText">Edit text</button>
+            <button class="btn btn-sm" id="boldBtn" title="Bold (while editing)"><b>B</b></button>
+            <button class="btn btn-sm" id="italicBtn" title="Italic (while editing)"><i>I</i></button>
+          </div>
+        </div>
+
+        <div class="group" id="gImage" hidden>
+          <h3>Image</h3>
+          <img class="imgprev" id="imgPrev" alt="" />
+          <div class="row">
+            <button class="btn btn-sm btn-dark" id="replaceImg">Replace image</button>
+            <input type="file" id="imgFile" accept="image/png,image/jpeg,image/gif,image/webp,image/avif,image/svg+xml" hidden />
+          </div>
+          <label class="field"><span>Image address</span><input class="input" id="imgSrc" spellcheck="false" /></label>
+          <label class="field"><span>Description (alt text)</span><input class="input" id="imgAlt" placeholder="What does the image show?" /></label>
+          <p class="muted small">The description helps blind visitors and Google understand the image.</p>
+        </div>
+
+        <div class="group" id="gLink" hidden>
+          <h3>Link</h3>
+          <label class="field"><span>Goes to</span><input class="input" id="href" list="pageList" spellcheck="false" placeholder="https://… or a page of your site" /></label>
+          <datalist id="pageList"></datalist>
+          <label class="check"><input type="checkbox" id="blank" /> Open in a new tab</label>
+        </div>
+
+        <div class="group" id="gBlock">
+          <h3>Arrange</h3>
+          <div class="row">
+            <button class="btn btn-sm" id="moveUp">↑ Move up</button>
+            <button class="btn btn-sm" id="moveDown">↓ Move down</button>
+          </div>
+          <div class="row">
+            <button class="btn btn-sm" id="dup">Duplicate</button>
+            <button class="btn btn-sm btn-danger" id="del">Delete</button>
+          </div>
+        </div>
+
+        <div class="group wren">
+          <h3>Ask Wren <span class="tag">Step 2</span></h3>
+          <textarea class="input" rows="2" placeholder="e.g. Make this text friendlier" disabled></textarea>
+          <p class="muted small">AI editing arrives in the next step of the prototype.</p>
+        </div>
+      </section>
+    </aside>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+  <script src="/_ili/editor.js" type="module"></script>
+</body>
+</html>
