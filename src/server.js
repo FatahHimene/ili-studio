@@ -8,7 +8,8 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import * as store from './store.js';
 import { importUpload, ImportError } from './importer.js';
-import { applyOps, injectEditor, strip, title } from './html.js';
+import { applyOps, injectEditor, strip, title, elementForAi } from './html.js';
+import { wren, aiStatus, AiError } from './ai.js';
 import { requireAuth, login, logout, isAuthed, frameToken, checkFrameToken } from './auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -42,7 +43,8 @@ const send = (res, file) => res.sendFile(path.join(PUBLIC, file));
 const wrap = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 
 // ---- static assets of the editor ---------------------------------------------------
-app.use('/_ili', express.static(path.join(PUBLIC, 'assets'), { maxAge: '1h' }));
+// always revalidate (ETag), so an update of the editor is picked up straight away
+app.use('/_ili', express.static(path.join(PUBLIC, 'assets'), { maxAge: 0 }));
 
 // ---- auth ----------------------------------------------------------------------------
 app.get('/login', (req, res) => (isAuthed(req) ? res.redirect('/') : send(res, 'login.html')));
@@ -124,6 +126,44 @@ app.post('/api/sites/:id/ops', requireAuth, wrap(async (req, res) => {
   meta.dirty = true;
   await store.writeMeta(meta.id, meta);
   res.json({ ok: true, results: out.results, undo: await store.historyCount(meta.id, page) });
+}));
+
+// ---- Wren (AI) ------------------------------------------------------------------------
+app.get('/api/ai', requireAuth, (req, res) => res.json(aiStatus()));
+
+const aiCalls = []; // simple guard: max 20 AI calls per minute for the whole app
+app.post('/api/sites/:id/wren', requireAuth, wrap(async (req, res) => {
+  const meta = await store.readMeta(req.params.id);
+  const page = String(req.body.page || 'index.html');
+  const elId = String(req.body.id || '');
+  const instruction = String(req.body.instruction || '').trim().slice(0, 500);
+  if (!meta.pages.includes(page)) return res.status(404).json({ error: 'Page not found' });
+  if (!instruction) return res.status(400).json({ error: 'Tell Wren what to do' });
+  const now = Date.now(); while (aiCalls.length && now - aiCalls[0] > 60000) aiCalls.shift();
+  if (aiCalls.length >= 20) return res.status(429).json({ error: 'Wren is busy. Wait a minute and try again.' });
+  aiCalls.push(now);
+
+  const file = store.safeJoin(store.draftDir(meta.id), page);
+  const before = await fs.readFile(file, 'utf8');
+  let el;
+  try { el = elementForAi(before, elId); } catch (e) { return res.status(400).json({ error: e.message }); }
+  if (el.html.length > 30000) return res.status(400).json({ error: 'This part is too big for Wren. Select a smaller element.' });
+  const mode = req.body.mode === 'text' ? 'text' : 'block';
+  let out;
+  try { out = await wren({ mode, html: mode === 'text' ? `<${el.tag}>${el.inner}</${el.tag}>` : el.html, instruction, context: el.context }); }
+  catch (e) { if (e instanceof AiError || e.name === 'TimeoutError') return res.status(502).json({ error: e.message || 'Wren took too long. Try again.' }); throw e; }
+
+  let html = out.html;
+  if (mode === 'text') html = html.replace(new RegExp(`^<${el.tag}[^>]*>([\\s\\S]*)</${el.tag}>$`, 'i'), '$1');
+  let result;
+  try { result = applyOps(before, [mode === 'text' ? { type: 'html', id: elId, html } : { type: 'replace', id: elId, html }]); }
+  catch (e) { return res.status(422).json({ error: 'Wren returned something unusable. Try again.' }); }
+  await store.pushHistory(meta.id, page, before);
+  await fs.writeFile(file, result.html);
+  meta.updatedAt = new Date().toISOString(); meta.dirty = true;
+  meta.aiUsage = { calls: (meta.aiUsage?.calls || 0) + 1, input: (meta.aiUsage?.input || 0) + out.usage.input, output: (meta.aiUsage?.output || 0) + out.usage.output };
+  await store.writeMeta(meta.id, meta);
+  res.json({ ok: true, undo: await store.historyCount(meta.id, page) });
 }));
 
 app.post('/api/sites/:id/undo', requireAuth, wrap(async (req, res) => {

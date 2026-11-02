@@ -62,6 +62,34 @@ export function sanitizeInline(fragment) {
   return root.html() ?? '';
 }
 
+// ---- sanitising a whole block written by the AI ---------------------------------
+const BLOCK_BANNED = new Set(['script', 'iframe', 'object', 'embed', 'frame', 'frameset', 'link', 'meta', 'base', 'form', 'input', 'textarea', 'select']);
+export function sanitizeBlock(fragment) {
+  const $ = cheerio.load(`<div id="__r">${fragment}</div>`, { xml: false });
+  const root = $('#__r');
+  root.find('*').each((_, el) => {
+    const $el = $(el);
+    if (BLOCK_BANNED.has(el.tagName)) { $el.remove(); return; }
+    for (const name of Object.keys(el.attribs || {})) {
+      const v = el.attribs[name]; const n = name.toLowerCase();
+      if (n.startsWith('on') || n === ID_ATTR || n === 'srcdoc' || ((n === 'href' || n === 'src' || n === 'action' || n === 'formaction') && badUrl(v))) $el.removeAttr(name);
+      if (n === 'style' && /expression|javascript|@import/i.test(v)) $el.removeAttr(name);
+    }
+  });
+  return root.html() ?? '';
+}
+
+/** The element's HTML without editor ids (what we send to the AI), plus page text for context. */
+export function elementForAi(html, id) {
+  const $ = load(html);
+  const el = $(`[${ID_ATTR}="${id}"]`).first();
+  if (!el.length) throw new Error('Element not found');
+  const clone = el.clone();
+  clone.removeAttr(ID_ATTR); clone.find(`[${ID_ATTR}]`).removeAttr(ID_ATTR);
+  const context = ($('title').text() + ' — ' + $('body').text()).replace(/\s+/g, ' ').trim().slice(0, 1500);
+  return { html: $.html(clone), inner: clone.html() ?? '', tag: el[0].tagName, context };
+}
+
 // ---- inline styles ------------------------------------------------------------
 const STYLE_OK = new Set(['color', 'background-color', 'background-image', 'font-size', 'font-weight', 'font-style', 'text-align', 'text-transform',
   'letter-spacing', 'line-height', 'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'margin-top', 'margin-bottom',
@@ -126,6 +154,19 @@ export function applyOps(html, ops) {
         if (value === null || value === '') el.removeAttr(name); else el.attr(name, value);
         if (name === 'src' && el.is('img')) { el.removeAttr('srcset'); el.parent('picture').find('source').remove(); }
         if (name === 'target' && value === '_blank') el.attr('rel', 'noopener');
+        break;
+      }
+      case 'replace': {
+        if (el.is('body, html')) throw new Error('Cannot replace this element');
+        const frag = load(`<body>${sanitizeBlock(String(op.html ?? ''))}</body>`);
+        const nodes = frag('body').children();
+        if (!nodes.length) throw new Error('Empty result');
+        nodes.each((i, n) => {
+          const $n = frag(n);
+          $n.attr(ID_ATTR, i === 0 ? op.id : 'e' + (next++).toString(36));
+          $n.find('*').each((_, c) => { if (!SVG_INNER(frag(c))) frag(c).attr(ID_ATTR, 'e' + (next++).toString(36)); });
+        });
+        el.replaceWith(frag('body').html());
         break;
       }
       case 'style': {

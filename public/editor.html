@@ -60,6 +60,13 @@
           <button class="btn btn-sm up" id="parentBtn" title="Select the element around this one">↑ Parent</button>
         </div>
 
+        <div class="group wren" id="gWren">
+          <h3>Ask Wren <span class="tag" id="wrenTag">AI</span></h3>
+          <div class="chips" id="wrenChips"></div>
+          <textarea class="input" id="wrenInput" rows="3" maxlength="500" placeholder="e.g. Make this friendlier and shorter"></textarea>
+          <button class="btn btn-sm btn-primary" id="wrenGo">Ask Wren →</button>
+          <p class="muted small" id="wrenNote">Wren edits only the selected element. You can undo any change.</p>
+        </div>
         <div class="group" id="gText" hidden>
           <h3>Text</h3>
           <p class="muted small" id="textPreview"></p>
@@ -131,11 +138,6 @@
           </div>
         </div>
 
-        <div class="group wren">
-          <h3>Ask Wren <span class="tag">Step 2</span></h3>
-          <textarea class="input" rows="2" placeholder="e.g. Make this text friendlier" disabled></textarea>
-          <p class="muted small">AI editing arrives in the next step of the prototype.</p>
-        </div>
       </section>
     </aside>
   </div>

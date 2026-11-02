@@ -10,7 +10,26 @@ Importer un site (ZIP ou HTML fait avec ChatGPT, Claude, Lovable…), cliquer su
 - **Annuler** (50 étapes par page), **Publier** vers `/s/<adresse-du-site>/`.
 - **Sécurité** : connexion par mot de passe, le code des sites tourne dans un bac à sable (il ne peut pas lire l'admin), protection contre les archives piégées.
 
-Pas encore : IA (Wren), comptes clients, domaines personnalisés, paiement.
+- **Wren (IA)** : sélectionner un élément et demander une modification (réécrire, raccourcir, moderniser une section…). Chaque modification peut être annulée.
+- **Style** : couleurs, taille, graisse, alignement, arrondis, espace intérieur.
+
+Pas encore : comptes clients, crédits, domaines personnalisés, paiement.
+
+## Activer Wren
+
+Dans CapRover → App Configs → Environmental Variables, ajouter **une** des deux options :
+
+```
+# Test gratuit avec Gemini (clé sur aistudio.google.com)
+GEMINI_API_KEY=votre-cle
+# GEMINI_MODEL=gemini-flash-latest   (facultatif)
+
+# ou Claude (clé sur console.anthropic.com)
+ANTHROPIC_API_KEY=votre-cle
+# ANTHROPIC_MODEL=claude-haiku-5-5   (facultatif)
+```
+
+Attention : avec l'offre gratuite de Gemini, Google peut utiliser les contenus envoyés pour améliorer ses produits. À réserver aux tests, jamais aux sites de vrais clients.
 
 ## Déployer sur CapRover
 

@@ -90,6 +90,7 @@ function show(info) {
   const root = ['body', 'html', 'main'].includes(info.tag);
   $('#del').disabled = root; $('#dup').disabled = root;
   fillStyle(info.style);
+  wrenUi(info);
 }
 
 // ---- style panel: live preview in the frame, saved after a short pause ---------------------
@@ -228,5 +229,40 @@ window.addEventListener('message', (e) => {
     case 'undo': undo(); break;
   }
 });
+
+// ---- Wren ---------------------------------------------------------------------------
+const ai = { enabled: false };
+const CHIPS_TEXT = ['Make it shorter', 'Make it friendlier', 'More professional', 'Fix spelling and grammar', 'Make it more persuasive'];
+const CHIPS_BLOCK = ['Make this section more modern', 'Add a clear call to action', 'Reorganise as 3 columns', 'Rewrite the text to be clearer'];
+function wrenUi(info) {
+  const g = $('#gWren');
+  g.classList.toggle('off', !ai.enabled);
+  $('#wrenInput').disabled = !ai.enabled; $('#wrenGo').disabled = !ai.enabled;
+  $('#wrenTag').textContent = ai.enabled ? (ai.provider === 'gemini' ? 'Gemini' : ai.provider === 'anthropic' ? 'Claude' : 'Test') : 'Not set up';
+  $('#wrenNote').textContent = ai.enabled ? 'Wren edits only the selected element. You can undo any change.' : 'Add GEMINI_API_KEY (or ANTHROPIC_API_KEY) in CapRover to switch Wren on.';
+  const chips = info?.canText ? CHIPS_TEXT : CHIPS_BLOCK;
+  $('#wrenChips').innerHTML = ai.enabled ? chips.map((c) => `<button type="button">${esc(c)}</button>`).join('') : '';
+}
+$('#wrenChips').onclick = (e) => { const b = e.target.closest('button'); if (b) { $('#wrenInput').value = b.textContent; askWren(); } };
+$('#wrenGo').onclick = () => askWren();
+$('#wrenInput').onkeydown = (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) askWren(); };
+async function askWren() {
+  const instruction = $('#wrenInput').value.trim();
+  if (!state.sel || !instruction) return toast('Select an element and tell Wren what to do', true);
+  flushStyle();
+  const go = $('#wrenGo'); go.classList.add('busy'); go.textContent = 'Wren is working ';
+  $('#canvas').classList.add('thinking');
+  const sel = state.sel;
+  try {
+    const d = await api('/wren', { method: 'POST', body: JSON.stringify({ page: state.page, id: sel.id, instruction, mode: sel.canText && !['section', 'div', 'header', 'footer', 'article'].includes(sel.tag) ? 'text' : 'block' }) });
+    $('#undo').disabled = !d.undo; state.meta.dirty = true; setStatus();
+    state.reselect = sel.id; loadFrame();
+    $('#wrenInput').value = '';
+    toast('Wren updated this part · <a href="#" id="tUndo">Undo</a>');
+    setTimeout(() => { const u = document.getElementById('tUndo'); if (u) u.onclick = (ev) => { ev.preventDefault(); undo(); }; }, 0);
+  } catch (e) { toast(esc(e.message), true); }
+  finally { go.classList.remove('busy'); go.textContent = 'Ask Wren →'; $('#canvas').classList.remove('thinking'); }
+}
+fetch('/api/ai').then((r) => r.json()).then((d) => { Object.assign(ai, d); wrenUi(state.sel); }).catch(() => {});
 
 init().catch((e) => toast(esc(e.message), true));
