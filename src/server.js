@@ -39,7 +39,18 @@ const imageUpload = multer({
   fileFilter: (_, f, cb) => cb(null, /^image\/(png|jpe?g|gif|webp|avif|svg\+xml)$/.test(f.mimetype)),
 });
 
-const send = (res, file) => res.sendFile(path.join(PUBLIC, file));
+// Pages reference /_ili assets with ?v=<boot id>, so every deploy busts the browser cache.
+const VERSION = Date.now().toString(36);
+const pageCache = new Map();
+const send = (res, file) => {
+  let html = pageCache.get(file);
+  if (!html) {
+    html = fss.readFileSync(path.join(PUBLIC, file), 'utf8').replace(/(\/_ili\/[\w.-]+\.(?:css|js))(?=["'])/g, `$1?v=${VERSION}`);
+    pageCache.set(file, html);
+  }
+  res.setHeader('Cache-Control', 'no-cache');
+  res.type('html').send(html);
+};
 const wrap = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 
 // ---- static assets of the editor ---------------------------------------------------
@@ -220,7 +231,7 @@ app.get('/frame/:id/:token/{*path}', wrap(async (req, res) => {
   if (!fss.existsSync(file)) return res.status(404).send('Not found');
   res.setHeader('Content-Security-Policy', SANDBOX);
   res.setHeader('Cache-Control', 'no-store');
-  if (/\.html?$/i.test(file)) return res.type('html').send(injectEditor(await fs.readFile(file, 'utf8')));
+  if (/\.html?$/i.test(file)) return res.type('html').send(injectEditor(await fs.readFile(file, 'utf8'), VERSION));
   res.sendFile(file);
 }));
 

@@ -199,8 +199,8 @@ export function applyOps(html, ops) {
 }
 
 /** Inject the editor script into a draft page served to the editor frame. */
-export function injectEditor(html) {
-  const tagStr = '<script src="/_ili/frame.js" data-ili-editor defer></script>';
+export function injectEditor(html, v = '') {
+  const tagStr = `<script src="/_ili/frame.js${v ? '?v=' + v : ''}" data-ili-editor defer></script>`;
   return /<\/body>/i.test(html) ? html.replace(/<\/body>/i, tagStr + '</body>') : html + tagStr;
 }
 
