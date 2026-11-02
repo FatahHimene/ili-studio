@@ -239,8 +239,8 @@ function wrenUi(info) {
   const g = $('#gWren');
   g.classList.toggle('off', !ai.enabled);
   $('#wrenInput').disabled = !ai.enabled; $('#wrenGo').disabled = !ai.enabled;
-  $('#wrenTag').textContent = ai.enabled ? (ai.provider === 'gemini' ? 'Gemini' : ai.provider === 'anthropic' ? 'Claude' : 'Test') : 'Not set up';
-  $('#wrenNote').textContent = ai.enabled ? 'Wren edits only the selected element. You can undo any change.' : 'Add GEMINI_API_KEY (or ANTHROPIC_API_KEY) in CapRover to switch Wren on.';
+  $('#wrenTag').textContent = ai.enabled ? ({ gemini: 'Gemini', anthropic: 'Claude', azure: 'Azure' }[ai.provider] || 'Test') : 'Not set up';
+  $('#wrenNote').textContent = ai.enabled ? 'Wren edits only the selected element. You can undo any change.' : 'Add an AI key (Azure, Gemini or Claude) in CapRover to switch Wren on.';
   const chips = info?.canText ? CHIPS_TEXT : CHIPS_BLOCK;
   $('#wrenChips').innerHTML = ai.enabled ? chips.map((c) => `<button type="button">${esc(c)}</button>`).join('') : '';
 }

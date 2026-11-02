@@ -1,12 +1,14 @@
 // Wren: AI provider layer. Works with Gemini (free tier for testing) or Claude.
 //   AI_PROVIDER=gemini     GEMINI_API_KEY=...     GEMINI_MODEL=gemini-flash-latest (optional)
 //   AI_PROVIDER=anthropic  ANTHROPIC_API_KEY=...  ANTHROPIC_MODEL=claude-haiku-5-5 (optional)
+//   AI_PROVIDER=azure      AZURE_OPENAI_ENDPOINT=https://<resource>.openai.azure.com  AZURE_OPENAI_API_KEY=...  AZURE_OPENAI_DEPLOYMENT=<deployment name>
 //   AI_PROVIDER=mock       (for automated tests, no network)
 
-const PROVIDER = (process.env.AI_PROVIDER || (process.env.GEMINI_API_KEY ? 'gemini' : process.env.ANTHROPIC_API_KEY ? 'anthropic' : '')).toLowerCase();
+const PROVIDER = (process.env.AI_PROVIDER || (process.env.AZURE_OPENAI_API_KEY ? 'azure' : process.env.GEMINI_API_KEY ? 'gemini' : process.env.ANTHROPIC_API_KEY ? 'anthropic' : '')).toLowerCase();
 
 export function aiStatus() {
-  const ok = PROVIDER === 'mock' || (PROVIDER === 'gemini' && !!process.env.GEMINI_API_KEY) || (PROVIDER === 'anthropic' && !!process.env.ANTHROPIC_API_KEY);
+  const ok = PROVIDER === 'mock' || (PROVIDER === 'gemini' && !!process.env.GEMINI_API_KEY) || (PROVIDER === 'anthropic' && !!process.env.ANTHROPIC_API_KEY)
+    || (PROVIDER === 'azure' && !!process.env.AZURE_OPENAI_API_KEY && !!process.env.AZURE_OPENAI_ENDPOINT && !!process.env.AZURE_OPENAI_DEPLOYMENT);
   return { enabled: ok, provider: ok ? PROVIDER : null };
 }
 
@@ -114,6 +116,48 @@ async function callAnthropic(user) {
   return { text, usage: { input: d.usage?.input_tokens || 0, output: d.usage?.output_tokens || 0 } };
 }
 
+// ---- Azure OpenAI / Azure AI Foundry (OpenAI-compatible v1 API) ----------------------------
+let azureNoEffort = false;
+async function callAzure(user, system = SYSTEM) {
+  let base = String(process.env.AZURE_OPENAI_ENDPOINT || '').trim().replace(/\/+$/, '');
+  if (!/\/openai\/v1$/.test(base)) base += '/openai/v1';
+  const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
+  const body = {
+    model: deployment,
+    messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+    max_completion_tokens: 6000,
+  };
+  const effort = process.env.AZURE_OPENAI_REASONING_EFFORT; // e.g. "minimal" or "low" for reasoning models
+  if (effort && !azureNoEffort) body.reasoning_effort = effort;
+  const t0 = Date.now();
+  let r;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      r = await fetch(`${base}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'api-key': process.env.AZURE_OPENAI_API_KEY },
+        body: JSON.stringify(body), signal: AbortSignal.timeout(TIMEOUT),
+      });
+    } catch (e) {
+      console.error(`[wren] azure network error after ${Date.now() - t0}ms:`, e.name, e.message, e.cause?.code || '');
+      throw new AiError(e.name === 'TimeoutError' ? 'Wren took too long to answer. Try again, or select a smaller part.' : 'Wren could not reach Azure. Check AZURE_OPENAI_ENDPOINT.');
+    }
+    if (r.status !== 429 && r.status < 500) break;
+    await sleep(1500 * (attempt + 1));
+  }
+  const d = await r.json().catch(() => ({}));
+  console.log(`[wren] azure ${deployment} -> ${r.status} in ${Date.now() - t0}ms`);
+  if (!r.ok) console.error('[wren] azure error:', JSON.stringify(d.error || d).slice(0, 500));
+  if (r.status === 400 && body.reasoning_effort && /reasoning/i.test(d.error?.message || '')) { azureNoEffort = true; return callAzure(user, system); }
+  if (r.status === 401 || r.status === 403) throw new AiError('Azure refused the key. Check AZURE_OPENAI_API_KEY.');
+  if (r.status === 404) throw new AiError(`Azure deployment "${deployment}" not found. Check AZURE_OPENAI_DEPLOYMENT (the deployment name, not the model name).`);
+  if (r.status === 429) throw new AiError('Azure rate limit reached. Wait a minute and try again.');
+  if (!r.ok) throw new AiError(`Azure error (${r.status}): ${d.error?.message || 'unknown'}`);
+  const text = d.choices?.[0]?.message?.content || '';
+  if (!text) { console.error('[wren] azure empty answer:', JSON.stringify(d).slice(0, 500)); throw new AiError('Wren could not answer this one. Try rephrasing.'); }
+  return { text, usage: { input: d.usage?.prompt_tokens || 0, output: d.usage?.completion_tokens || 0 } };
+}
+
 function callMock(user, { mode, html }) {
   const m = html.match(/^<([a-z0-9]+)/i);
   const text = mode === 'text' ? 'Wren rewrote this text.' : html.replace(/>([^<]{3,})</, '>Wren rewrote this section.<').replace(/^<([a-z0-9]+)/i, `<${m ? m[1] : 'div'}`);
@@ -126,7 +170,8 @@ export async function wren({ mode, html, instruction, context }) {
   if (!st.enabled) throw new AiError('Wren is not set up yet: add an AI key in the app settings.');
   const user = prompt({ mode, html, instruction, context });
   if (PROVIDER === 'mock' && process.env.AI_MOCK_DELAY_MS) await sleep(Number(process.env.AI_MOCK_DELAY_MS));
-  const out = PROVIDER === 'gemini' ? await callGemini(user) : PROVIDER === 'anthropic' ? await callAnthropic(user) : callMock(user, { mode, html });
+  const out = PROVIDER === 'gemini' ? await callGemini(user) : PROVIDER === 'anthropic' ? await callAnthropic(user)
+    : PROVIDER === 'azure' ? await callAzure(user) : callMock(user, { mode, html });
   return { html: clean(out.text), usage: out.usage };
 }
 
@@ -137,7 +182,9 @@ export async function ping() {
   const t0 = Date.now();
   try {
     const out = PROVIDER === 'gemini' ? await callGemini('Reply with the single word: OK', 'You are a test.')
-      : PROVIDER === 'anthropic' ? await callAnthropic('Reply with the single word: OK') : { text: 'OK' };
-    return { ok: true, provider: st.provider, model: PROVIDER === 'gemini' ? (process.env.GEMINI_MODEL || 'gemini-flash-latest') : process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5', reply: out.text.trim().slice(0, 50), ms: Date.now() - t0 };
+      : PROVIDER === 'anthropic' ? await callAnthropic('Reply with the single word: OK')
+      : PROVIDER === 'azure' ? await callAzure('Reply with the single word: OK', 'You are a test.') : { text: 'OK' };
+    const model = { gemini: process.env.GEMINI_MODEL || 'gemini-flash-latest', anthropic: process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5', azure: process.env.AZURE_OPENAI_DEPLOYMENT, mock: 'mock' }[PROVIDER];
+    return { ok: true, provider: st.provider, model, reply: out.text.trim().slice(0, 50), ms: Date.now() - t0 };
   } catch (e) { return { ok: false, provider: st.provider, error: e.message, ms: Date.now() - t0 }; }
 }

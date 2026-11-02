@@ -24,6 +24,12 @@ Dans CapRover → App Configs → Environmental Variables, ajouter **une** des d
 GEMINI_API_KEY=votre-cle
 # GEMINI_MODEL=gemini-flash-latest   (facultatif)
 
+# ou Azure (Azure AI Foundry : déployer un modèle, puis copier endpoint + clé)
+AZURE_OPENAI_ENDPOINT=https://votre-ressource.openai.azure.com
+AZURE_OPENAI_API_KEY=votre-cle
+AZURE_OPENAI_DEPLOYMENT=nom-du-deploiement
+# AZURE_OPENAI_REASONING_EFFORT=minimal   (facultatif, pour les modèles « reasoning »)
+
 # ou Claude (clé sur console.anthropic.com)
 ANTHROPIC_API_KEY=votre-cle
 # ANTHROPIC_MODEL=claude-haiku-5-5   (facultatif)
