@@ -37,8 +37,10 @@ ${html}`;
 
 const clean = (s) => String(s || '').trim().replace(/^```(?:html)?\s*/i, '').replace(/```\s*$/, '').trim();
 
-const TIMEOUT = Number(process.env.AI_TIMEOUT_MS || 40000);
-let geminiNoThinkingCfg = false; // set once if the model refuses the thinking setting
+const TIMEOUT = Number(process.env.AI_TIMEOUT_MS || 90000);
+// Turn "thinking" off for speed. Newer models use thinkingLevel, older ones thinkingBudget; try each, remember what works.
+const THINKING = [{ thinkingLevel: 'minimal' }, { thinkingBudget: 0 }, null];
+const thinkingIdx = new Map(); // model -> index in THINKING
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const GEMINI_MODELS = [process.env.GEMINI_MODEL || 'gemini-flash-latest', process.env.GEMINI_FALLBACK_MODEL || 'gemini-flash-lite-latest'];
@@ -65,8 +67,10 @@ async function callGeminiOnce(user, system, model) {
   const body = {
     systemInstruction: { parts: [{ text: system }] },
     contents: [{ role: 'user', parts: [{ text: user }] }],
-    generationConfig: { temperature: 0.6, maxOutputTokens: 8192, ...(geminiNoThinkingCfg ? {} : { thinkingConfig: { thinkingBudget: 0 } }) },
+    generationConfig: { temperature: 0.6, maxOutputTokens: 8192 },
   };
+  const ti = thinkingIdx.get(model) ?? 0;
+  if (THINKING[ti]) body.generationConfig.thinkingConfig = THINKING[ti];
   let r;
   try {
     r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
@@ -81,7 +85,7 @@ async function callGeminiOnce(user, system, model) {
   }
   const d = await r.json().catch(() => ({}));
   console.log(`[wren] gemini ${model} -> ${r.status} in ${Date.now() - t0}ms`);
-  if (r.status === 400 && !geminiNoThinkingCfg && /thinking/i.test(d.error?.message || '')) { geminiNoThinkingCfg = true; return callGeminiOnce(user, system, model); }
+  if (r.status === 400 && THINKING[ti] && /thinking/i.test(d.error?.message || '')) { thinkingIdx.set(model, ti + 1); return callGeminiOnce(user, system, model); }
   if (r.status === 503 || r.status === 500 || r.status === 529) { const e = new AiError('AI overloaded'); e.retryable = true; throw e; }
   if (!r.ok) console.error('[wren] gemini error:', JSON.stringify(d.error || d).slice(0, 500));
   if (r.status === 429) throw new AiError('Free AI limit reached for now. Wait a minute and try again.');
@@ -121,6 +125,7 @@ export async function wren({ mode, html, instruction, context }) {
   const st = aiStatus();
   if (!st.enabled) throw new AiError('Wren is not set up yet: add an AI key in the app settings.');
   const user = prompt({ mode, html, instruction, context });
+  if (PROVIDER === 'mock' && process.env.AI_MOCK_DELAY_MS) await sleep(Number(process.env.AI_MOCK_DELAY_MS));
   const out = PROVIDER === 'gemini' ? await callGemini(user) : PROVIDER === 'anthropic' ? await callAnthropic(user) : callMock(user, { mode, html });
   return { html: clean(out.text), usage: out.usage };
 }

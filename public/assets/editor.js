@@ -255,7 +255,16 @@ async function askWren() {
   $('#canvas').classList.add('thinking');
   const sel = state.sel;
   try {
-    const d = await api('/wren', { method: 'POST', body: JSON.stringify({ page: state.page, id: sel.id, instruction, mode: sel.canText && !['section', 'div', 'header', 'footer', 'article'].includes(sel.tag) ? 'text' : 'block' }) });
+    const start = await api('/wren', { method: 'POST', body: JSON.stringify({ page: state.page, id: sel.id, instruction, mode: sel.canText && !['section', 'div', 'header', 'footer', 'article'].includes(sel.tag) ? 'text' : 'block' }) });
+    let d; const t0 = Date.now();
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 1500));
+      d = await api(`/wren/${start.job}`);
+      if (d.status === 'done') break;
+      if (d.status === 'error') throw new Error(d.error);
+      if (Date.now() - t0 > 120000) throw new Error('Wren took too long. Try again or select a smaller part.');
+      go.textContent = `Wren is working (${Math.round((Date.now() - t0) / 1000)}s) `;
+    }
     $('#undo').disabled = !d.undo; state.meta.dirty = true; setStatus();
     state.reselect = sel.id; loadFrame();
     $('#wrenInput').value = '';

@@ -144,6 +144,9 @@ app.get('/api/ai', requireAuth, (req, res) => res.json(aiStatus()));
 app.get('/api/ai/ping', requireAuth, wrap(async (req, res) => res.json(await ping())));
 
 const aiCalls = []; // simple guard: max 20 AI calls per minute for the whole app
+const jobs = new Map(); // jobId -> { status: 'working'|'done'|'error', error?, undo?, site, at }
+
+/** Start a Wren job; the editor polls GET /api/sites/:id/wren/:job (avoids proxy time-outs on slow AI). */
 app.post('/api/sites/:id/wren', requireAuth, wrap(async (req, res) => {
   const meta = await store.readMeta(req.params.id);
   const page = String(req.body.page || 'index.html');
@@ -156,27 +159,46 @@ app.post('/api/sites/:id/wren', requireAuth, wrap(async (req, res) => {
   aiCalls.push(now);
 
   const file = store.safeJoin(store.draftDir(meta.id), page);
-  const before = await fs.readFile(file, 'utf8');
+  const snapshot = await fs.readFile(file, 'utf8');
   let el;
-  try { el = elementForAi(before, elId); } catch (e) { return res.status(400).json({ error: e.message }); }
+  try { el = elementForAi(snapshot, elId); } catch (e) { return res.status(400).json({ error: e.message }); }
   if (el.html.length > 30000) return res.status(400).json({ error: 'This part is too big for Wren. Select a smaller element.' });
   const mode = req.body.mode === 'text' ? 'text' : 'block';
-  let out;
-  try { out = await wren({ mode, html: mode === 'text' ? `<${el.tag}>${el.inner}</${el.tag}>` : el.html, instruction, context: el.context }); }
-  catch (e) { if (e instanceof AiError || e.name === 'TimeoutError') return res.status(502).json({ error: e.message || 'Wren took too long. Try again.' }); throw e; }
 
-  let html = out.html;
-  if (mode === 'text') html = html.replace(new RegExp(`^<${el.tag}[^>]*>([\\s\\S]*)</${el.tag}>$`, 'i'), '$1');
-  let result;
-  try { result = applyOps(before, [mode === 'text' ? { type: 'html', id: elId, html } : { type: 'replace', id: elId, html }]); }
-  catch (e) { return res.status(422).json({ error: 'Wren returned something unusable. Try again.' }); }
-  await store.pushHistory(meta.id, page, before);
-  await fs.writeFile(file, result.html);
-  meta.updatedAt = new Date().toISOString(); meta.dirty = true;
-  meta.aiUsage = { calls: (meta.aiUsage?.calls || 0) + 1, input: (meta.aiUsage?.input || 0) + out.usage.input, output: (meta.aiUsage?.output || 0) + out.usage.output };
-  await store.writeMeta(meta.id, meta);
-  res.json({ ok: true, undo: await store.historyCount(meta.id, page) });
+  const jobId = store.newId();
+  const job = { status: 'working', site: meta.id, at: Date.now() };
+  jobs.set(jobId, job);
+  for (const [k, j] of jobs) if (Date.now() - j.at > 10 * 60 * 1000) jobs.delete(k);
+  res.status(202).json({ job: jobId });
+
+  (async () => {
+    try {
+      const out = await wren({ mode, html: mode === 'text' ? `<${el.tag}>${el.inner}</${el.tag}>` : el.html, instruction, context: el.context });
+      let html = out.html;
+      if (mode === 'text') html = html.replace(new RegExp(`^<${el.tag}[^>]*>([\\s\\S]*)</${el.tag}>$`, 'i'), '$1');
+      const before = await fs.readFile(file, 'utf8'); // apply on the latest version of the page
+      let result;
+      try { result = applyOps(before, [mode === 'text' ? { type: 'html', id: elId, html } : { type: 'replace', id: elId, html }]); }
+      catch { throw new AiError('Wren returned something unusable. Try again.'); }
+      await store.pushHistory(meta.id, page, before);
+      await fs.writeFile(file, result.html);
+      const m = await store.readMeta(meta.id);
+      m.updatedAt = new Date().toISOString(); m.dirty = true;
+      m.aiUsage = { calls: (m.aiUsage?.calls || 0) + 1, input: (m.aiUsage?.input || 0) + out.usage.input, output: (m.aiUsage?.output || 0) + out.usage.output };
+      await store.writeMeta(meta.id, m);
+      Object.assign(job, { status: 'done', undo: await store.historyCount(meta.id, page) });
+    } catch (e) {
+      if (!(e instanceof AiError)) console.error('[wren] job failed:', e);
+      Object.assign(job, { status: 'error', error: e instanceof AiError ? e.message : 'Wren hit a problem. Try again.' });
+    }
+  })();
 }));
+
+app.get('/api/sites/:id/wren/:job', requireAuth, (req, res) => {
+  const job = jobs.get(req.params.job);
+  if (!job || job.site !== req.params.id) return res.status(404).json({ error: 'Unknown Wren task' });
+  res.json({ status: job.status, error: job.error, undo: job.undo });
+});
 
 app.post('/api/sites/:id/undo', requireAuth, wrap(async (req, res) => {
   const meta = await store.readMeta(req.params.id);
