@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import * as store from './store.js';
 import { importUpload, ImportError } from './importer.js';
 import { applyOps, injectEditor, strip, title, elementForAi } from './html.js';
-import { wren, aiStatus, AiError } from './ai.js';
+import { wren, aiStatus, AiError, ping } from './ai.js';
 import { requireAuth, login, logout, isAuthed, frameToken, checkFrameToken } from './auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -141,6 +141,7 @@ app.post('/api/sites/:id/ops', requireAuth, wrap(async (req, res) => {
 
 // ---- Wren (AI) ------------------------------------------------------------------------
 app.get('/api/ai', requireAuth, (req, res) => res.json(aiStatus()));
+app.get('/api/ai/ping', requireAuth, wrap(async (req, res) => res.json(await ping())));
 
 const aiCalls = []; // simple guard: max 20 AI calls per minute for the whole app
 app.post('/api/sites/:id/wren', requireAuth, wrap(async (req, res) => {

@@ -23,8 +23,9 @@ function setStatus() {
 }
 
 async function api(path, opts = {}) {
-  const r = await fetch(`/api/sites/${id}${path}`, { headers: opts.body && !(opts.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}, ...opts });
+  const r = await fetch(`/api/sites/${id}${path}`, { signal: AbortSignal.timeout(opts.timeout || 60000), headers: opts.body && !(opts.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}, ...opts });
   let d = {}; try { d = await r.json(); } catch { /* */ }
+  if (r.status === 502 || r.status === 504) { if (!d.error) throw new Error('The server took too long to answer. Try again.'); }
   if (r.status === 401) { location.href = '/login'; throw new Error('Signed out'); }
   if (!r.ok) throw new Error(d.error || 'Something went wrong');
   return d;
@@ -260,7 +261,7 @@ async function askWren() {
     $('#wrenInput').value = '';
     toast('Wren updated this part · <a href="#" id="tUndo">Undo</a>');
     setTimeout(() => { const u = document.getElementById('tUndo'); if (u) u.onclick = (ev) => { ev.preventDefault(); undo(); }; }, 0);
-  } catch (e) { toast(esc(e.message), true); }
+  } catch (e) { toast(esc(e.name === 'TimeoutError' ? 'Wren took too long. Try again or select a smaller part.' : e.message), true); }
   finally { go.classList.remove('busy'); go.textContent = 'Ask Wren →'; $('#canvas').classList.remove('thinking'); }
 }
 fetch('/api/ai').then((r) => r.json()).then((d) => { Object.assign(ai, d); wrenUi(state.sel); }).catch(() => {});
