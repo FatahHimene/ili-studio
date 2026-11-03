@@ -98,7 +98,8 @@ export function elementForAi(html, id) {
 // ---- inline styles ------------------------------------------------------------
 export const STYLE_OK = new Set(['color', 'background-color', 'background-image', 'font-size', 'font-weight', 'font-style', 'text-align', 'text-transform',
   'letter-spacing', 'line-height', 'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'margin-top', 'margin-bottom',
-  'border-radius', 'border', 'border-color', 'border-width', 'border-style', 'width', 'max-width', 'opacity']);
+  'border-radius', 'border', 'border-color', 'border-width', 'border-style', 'width', 'max-width', 'opacity',
+  'height', 'min-height', 'object-fit', 'object-position', 'display', 'margin-left', 'margin-right', 'gap']);
 
 function parseStyle(str) {
   const map = new Map();
@@ -172,6 +173,21 @@ export function applyOps(html, ops) {
           $n.find('*').each((_, c) => { if (!SVG_INNER(frag(c))) frag(c).attr(ID_ATTR, 'e' + (next++).toString(36)); });
         });
         el.replaceWith(frag('body').html());
+        break;
+      }
+      case 'insert': {
+        if (el.is('html, head')) throw new Error('Cannot insert here');
+        const frag = load(`<body>${sanitizeBlock(String(op.html ?? ''))}</body>`);
+        const nodes = frag('body').children();
+        if (!nodes.length) throw new Error('Nothing to insert');
+        nodes.each((i, n) => {
+          frag(n).attr(ID_ATTR, 'e' + (next++).toString(36));
+          frag(n).find('*').each((_, c) => { if (!SVG_INNER(frag(c))) frag(c).attr(ID_ATTR, 'e' + (next++).toString(36)); });
+        });
+        const html = frag('body').html();
+        const firstId = frag(nodes[0]).attr(ID_ATTR);
+        if (op.position === 'before') el.before(html); else if (op.position === 'inside') el.append(html); else el.after(html);
+        results.push({ op: 'insert', newId: firstId });
         break;
       }
       case 'style': {

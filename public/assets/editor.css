@@ -77,3 +77,21 @@ input[type=range] { width: 100%; accent-color: var(--ink); }
 .pgrid button:hover { outline: 3px solid var(--signal); outline-offset: 1px; }
 .pgrid button.busy::after { content: 'Adding…'; position: absolute; inset: 0; display: grid; place-items: center; background: rgba(13,18,33,.6); color: #fff; font-weight: 600; font-size: 13px; }
 .pcredit { font-size: 12px; color: var(--slate); margin: 0; }
+
+/* inspector tabs */
+.itabs { display: flex; border: 1px solid var(--ink); border-radius: var(--r); padding: 2px; background: var(--white); }
+.itabs button { flex: 1; border: 0; background: transparent; padding: 7px 6px; font-size: 13px; font-weight: 600; border-radius: 3px; cursor: pointer; }
+.itabs button[aria-selected='true'] { background: var(--ink); color: var(--paper); }
+.tabpane { display: grid; gap: 14px; }
+.row.nowrap { flex-wrap: nowrap; align-items: center; }
+.ins { display: flex; flex-wrap: wrap; gap: 6px; }
+/* pages dialog */
+.psheet.pages { width: min(560px, 100%); }
+.plist { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--ink); }
+.plist li { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--grid); }
+.plist .pn { flex: 1; min-width: 0; }
+.plist .pn b { display: block; } .plist .pn span { font: 400 12px var(--mono); color: var(--slate); }
+.plist input { flex: 1; }
+.addpage { display: grid; gap: 12px; padding-top: 8px; }
+.addpage h3 { font-size: 16px; }
+.addpage .btn { justify-self: start; }

@@ -93,7 +93,15 @@ function show(info) {
   $('#del').disabled = root; $('#dup').disabled = root;
   fillStyle(info.style);
   wrenUi(info);
+  $('#noContent').hidden = !!(info.canText || info.kind === 'image' || info.link);
+  $('#fitField').hidden = info.kind !== 'image';
 }
+
+// ---- inspector tabs ------------------------------------------------------------------------
+document.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => {
+  document.querySelectorAll('[data-tab]').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
+  document.querySelectorAll('[data-pane]').forEach((p) => { p.hidden = p.dataset.pane !== b.dataset.tab; });
+});
 
 // ---- style panel: live preview in the frame, saved after a short pause ---------------------
 const pending = { id: null, props: {}, timer: 0 };
@@ -122,6 +130,10 @@ function fillStyle(st) {
   document.querySelectorAll('[data-align]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.align === (st.textAlign === 'start' ? 'left' : st.textAlign))));
   $('#sRadius').value = st.radius; $('#sRadiusVal').textContent = st.radius + 'px';
   $('#sPadY').value = st.padY; $('#sPadX').value = st.padX;
+  $('#sWidth').value = st.widthPct ?? 100; $('#sWidthVal').textContent = st.widthSet ? `${st.widthPct}%` : `auto (${st.widthPct}%)`;
+  $('#sHeight').value = st.height ?? ''; $('#sHeight').placeholder = st.heightNow ? `auto (${st.heightNow})` : 'auto';
+  $('#sFit').value = st.fit || '';
+  $('#sMt').value = st.mt ?? 0; $('#sMb').value = st.mb ?? 0;
 }
 const isHex = (v) => /^#[0-9a-f]{6}$/i.test(v);
 $('#sColor').oninput = (e) => { $('#sColorHex').value = e.target.value; live({ color: e.target.value }); };
@@ -140,9 +152,95 @@ document.querySelectorAll('[data-align]').forEach((b) => b.onclick = () => {
 $('#sRadius').oninput = (e) => { $('#sRadiusVal').textContent = e.target.value + 'px'; live({ 'border-radius': e.target.value + 'px' }); };
 const pad = () => live({ padding: `${Math.max(0, Number($('#sPadY').value) || 0)}px ${Math.max(0, Number($('#sPadX').value) || 0)}px` });
 $('#sPadY').onchange = pad; $('#sPadX').onchange = pad;
+$('#sWidth').oninput = (e) => { $('#sWidthVal').textContent = e.target.value + '%'; live({ width: e.target.value + '%', 'max-width': '100%' }); };
+$('#sWidthAuto').onclick = () => { live({ width: null, 'max-width': null }); $('#sWidthVal').textContent = 'auto'; };
+$('#sHeight').onchange = (e) => { const v = Number(e.target.value); live({ height: v > 0 ? v + 'px' : null }); };
+$('#sFit').onchange = (e) => live({ 'object-fit': e.target.value || null });
+$('#sMt').onchange = (e) => live({ 'margin-top': Math.max(0, Number(e.target.value) || 0) + 'px' });
+$('#sMb').onchange = (e) => live({ 'margin-bottom': Math.max(0, Number(e.target.value) || 0) + 'px' });
+
+// ---- insert new elements after the selection --------------------------------------------------
+const PLACEHOLDER_IMG = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500"><rect width="800" height="500" fill="#e6e9ef"/><path d="M300 330l90-110 70 80 45-45 95 75H300z" fill="#c3c9d5"/><circle cx="520" cy="190" r="34" fill="#c3c9d5"/></svg>');
+const BLOCKS = {
+  heading: '<h2>New heading</h2>',
+  text: '<p>New text. Double-click to write, or ask Wren.</p>',
+  button: '<a href="#" style="display: inline-block; padding: 12px 22px; border-radius: 8px; background-color: #1e3a6e; color: #ffffff; text-decoration: none; font-weight: 600">New button</a>',
+  image: `<img src="${PLACEHOLDER_IMG}" alt="" style="width: 100%; max-width: 100%; height: auto; border-radius: 8px">`,
+  spacer: '<div style="height: 48px" aria-hidden="true"></div>',
+};
+document.querySelectorAll('[data-ins]').forEach((b) => b.onclick = () => {
+  if (!state.sel) return;
+  ops([{ type: 'insert', id: state.sel.id, position: 'after', html: BLOCKS[b.dataset.ins] }], { reload: true, reselect: (d) => d.results?.[0]?.newId || null })
+    .then(() => toast(b.dataset.ins === 'image' ? 'Image added · use “Find a free photo” to choose it' : 'Added')).catch(() => {});
+});
+
+// ---- pages ------------------------------------------------------------------------------------
+const pageLabel = (p) => (p === 'index.html' ? 'Home' : p.replace(/\.html?$/, '').split('/').pop().replace(/[-_]+/g, ' ').replace(/^./, (c) => c.toUpperCase()));
+async function openPages() {
+  $('#pgModal').hidden = false;
+  renderPages();
+  const tpls = await api('/templates').catch(() => []);
+  $('#pgFrom').innerHTML = `<option value="blank">Blank page (keeps menu and footer)</option><option value="duplicate">Copy of “${esc(pageLabel(state.page))}”</option>` +
+    tpls.map((t) => `<option value="template:${esc(t.id)}">Theme page: ${esc(t.name)}</option>`).join('');
+}
+function renderPages() {
+  $('#pgList').innerHTML = state.meta.pages.map((p) => `
+    <li data-p="${esc(p)}"><span class="pn"><b>${esc(pageLabel(p))}</b><span>${esc(p)}</span></span>
+      <button class="btn btn-sm" data-act="open" type="button">Open</button>
+      ${p === 'index.html' ? '' : '<button class="btn btn-sm" data-act="rename" type="button">Rename</button><button class="btn btn-sm btn-danger" data-act="delete" type="button">Delete</button>'}
+    </li>`).join('');
+}
+function refreshPageSelect() {
+  $('#page').innerHTML = state.meta.pages.map((p) => `<option value="${esc(p)}">${esc(p === 'index.html' ? 'Home (index.html)' : p)}</option>`).join('');
+  $('#page').value = state.page;
+  $('#pageList').innerHTML = state.meta.pages.map((p) => `<option value="${esc(p)}">`).join('');
+}
+$('#pagesBtn').onclick = openPages;
+$('#pgClose').onclick = () => { $('#pgModal').hidden = true; };
+$('#pgModal').addEventListener('click', (e) => { if (e.target === $('#pgModal')) $('#pgModal').hidden = true; });
+$('#pgList').onclick = async (e) => {
+  const b = e.target.closest('button[data-act]'); if (!b) return;
+  const li = b.closest('li'); const p = li.dataset.p;
+  if (b.dataset.act === 'open') { $('#pgModal').hidden = true; state.page = p; state.scrollY = 0; show(null); refreshPageSelect(); loadFrame(); return; }
+  if (b.dataset.act === 'rename') {
+    const name = li.querySelector('.pn b').textContent;
+    li.innerHTML = `<input class="input" value="${esc(name)}" maxlength="60" /><button class="btn btn-sm btn-primary" data-act="save" type="button">Save</button>`;
+    li.querySelector('input').focus(); return;
+  }
+  if (b.dataset.act === 'save') {
+    const title = li.querySelector('input').value.trim(); if (!title) return;
+    try { await api('/pages', { method: 'PATCH', body: JSON.stringify({ page: p, title }) }); toast('Page renamed'); state.meta.dirty = true; setStatus(); if (p === state.page || true) loadFrame(); } catch (err) { toast(esc(err.message), true); }
+    renderPages(); return;
+  }
+  if (b.dataset.act === 'delete') {
+    if (b.dataset.confirm !== '1') { b.dataset.confirm = '1'; b.textContent = 'Confirm'; setTimeout(() => { b.dataset.confirm = ''; b.textContent = 'Delete'; }, 3000); return; }
+    try {
+      const d = await api(`/pages?page=${encodeURIComponent(p)}`, { method: 'DELETE' });
+      state.meta.pages = d.pages; state.meta.dirty = true; setStatus();
+      if (state.page === p) { state.page = 'index.html'; show(null); }
+      refreshPageSelect(); renderPages(); loadFrame(); toast('Page deleted');
+    } catch (err) { toast(esc(err.message), true); }
+  }
+};
+$('#pgForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const f = e.target; const from = f.elements.from.value;
+  const body = { title: f.elements.title.value.trim(), menu: f.elements.menu.checked, source: state.page,
+    from: from.startsWith('template:') ? 'template' : from, template: from.startsWith('template:') ? from.slice(9) : undefined };
+  const btn = f.querySelector('button[type=submit]'); btn.disabled = true; btn.textContent = from.startsWith('template:') ? 'Wren is writing the page…' : 'Adding…';
+  try {
+    const d = await api('/pages', { method: 'POST', body: JSON.stringify(body), timeout: 180000 });
+    state.meta.pages = d.pages; state.meta.dirty = true; setStatus();
+    state.page = d.page; state.scrollY = 0; show(null); refreshPageSelect(); loadFrame();
+    $('#pgModal').hidden = true; f.reset(); toast('Page added');
+  } catch (err) { toast(esc(err.message), true); }
+  finally { btn.disabled = false; btn.textContent = 'Add page →'; }
+};
+
 $('#resetStyle').onclick = () => {
   if (!state.sel) return;
-  const props = { color: null, 'background-color': null, 'font-size': null, 'font-weight': null, 'text-align': null, 'border-radius': null, padding: null };
+  const props = { color: null, 'background-color': null, 'font-size': null, 'font-weight': null, 'text-align': null, 'border-radius': null, padding: null,
+    width: null, 'max-width': null, height: null, 'object-fit': null, 'margin-top': null, 'margin-bottom': null };
   live(props); flushStyle();
   tell({ cmd: 'style', id: state.sel.id, props: {}, notify: true });
 }
@@ -265,7 +363,7 @@ async function askWren() {
   $('#canvas').classList.add('thinking');
   const sel = state.sel;
   try {
-    const start = await api('/wren', { method: 'POST', body: JSON.stringify({ page: state.page, id: sel.id, instruction, style: sel.style ? `text ${sel.style.color}, background ${sel.style.bgOwn ? sel.style.bg : 'none (inherits ' + sel.style.bg + ')'}, ${sel.style.fontSize}px, weight ${sel.style.fontWeight}, corners ${sel.style.radius}px, padding ${sel.style.padY}px ${sel.style.padX}px` : '', mode: sel.canText && !['section', 'div', 'header', 'footer', 'article'].includes(sel.tag) ? 'text' : 'block' }) });
+    const start = await api('/wren', { method: 'POST', body: JSON.stringify({ page: state.page, id: sel.id, instruction, current: sel.style || {}, style: sel.style ? `text ${sel.style.color}, background ${sel.style.bgOwn ? sel.style.bg : 'none (inherits ' + sel.style.bg + ')'}, ${sel.style.fontSize}px, weight ${sel.style.fontWeight}, corners ${sel.style.radius}px, padding ${sel.style.padY}px ${sel.style.padX}px` : '', mode: sel.canText && !['section', 'div', 'header', 'footer', 'article'].includes(sel.tag) ? 'text' : 'block' }) });
     let d; const t0 = Date.now();
     for (;;) {
       await new Promise((r) => setTimeout(r, 1500));

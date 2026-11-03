@@ -16,6 +16,7 @@
     <input class="name" id="siteName" aria-label="Site name" maxlength="80" />
     <label class="sr" for="page">Page</label>
     <select class="input page" id="page" aria-label="Page"></select>
+    <button class="btn btn-sm" id="pagesBtn" type="button" aria-haspopup="dialog" title="Add, rename or delete pages">Pages</button>
     <div class="seg" role="group" aria-label="Device">
       <button data-dev="desktop" aria-pressed="true" title="Desktop">Desktop</button>
       <button data-dev="tablet" aria-pressed="false" title="Tablet">Tablet</button>
@@ -67,6 +68,13 @@
           <button class="btn btn-sm btn-primary" id="wrenGo">Ask Wren →</button>
           <p class="muted small" id="wrenNote">Wren edits only the selected element. You can undo any change.</p>
         </div>
+        <div class="itabs" role="tablist" aria-label="Edit">
+          <button role="tab" data-tab="content" aria-selected="true">Content</button>
+          <button role="tab" data-tab="style" aria-selected="false">Style</button>
+          <button role="tab" data-tab="layout" aria-selected="false">Layout</button>
+        </div>
+        <div class="tabpane" data-pane="content">
+        <p class="muted small" id="noContent" hidden>This element has no text, image or link of its own. Use <b>Style</b> or <b>Layout</b>, or select an element inside it.</p>
         <div class="group" id="gText" hidden>
           <h3>Text</h3>
           <p class="muted small" id="textPreview"></p>
@@ -97,6 +105,8 @@
           <label class="check"><input type="checkbox" id="blank" /> Open in a new tab</label>
         </div>
 
+        </div>
+        <div class="tabpane" data-pane="style" hidden>
         <div class="group" id="gStyle">
           <h3>Style <button class="btn btn-sm reset" id="resetStyle" title="Remove the styles added here">Reset</button></h3>
           <div class="sgrid">
@@ -127,6 +137,25 @@
           </div>
         </div>
 
+        <div class="group" id="gSize">
+          <h3>Size and spacing</h3>
+          <div class="sfield">
+            <span>Width <b class="mono" id="sWidthVal"></b></span>
+            <div class="row nowrap"><input type="range" id="sWidth" min="10" max="100" step="1" /><button class="btn btn-sm" id="sWidthAuto" type="button" title="Back to automatic width">Auto</button></div>
+          </div>
+          <div class="sgrid">
+            <label class="sfield"><span>Height (px)</span><input class="input" type="number" id="sHeight" min="0" max="2000" placeholder="auto" /></label>
+            <label class="sfield" id="fitField"><span>Image fit</span>
+              <select class="input" id="sFit"><option value="">Default</option><option value="cover">Fill and crop</option><option value="contain">Show whole image</option></select>
+            </label>
+          </div>
+          <div class="sgrid">
+            <label class="sfield"><span>Space above (px)</span><input class="input" type="number" id="sMt" min="0" max="400" /></label>
+            <label class="sfield"><span>Space below (px)</span><input class="input" type="number" id="sMb" min="0" max="400" /></label>
+          </div>
+        </div>
+        </div>
+        <div class="tabpane" data-pane="layout" hidden>
         <div class="group" id="gBlock">
           <h3>Arrange</h3>
           <div class="row">
@@ -138,10 +167,36 @@
             <button class="btn btn-sm btn-danger" id="del">Delete</button>
           </div>
         </div>
+        <div class="group" id="gInsert">
+          <h3>Add after this element</h3>
+          <div class="ins">
+            <button class="btn btn-sm" data-ins="heading" type="button">Heading</button>
+            <button class="btn btn-sm" data-ins="text" type="button">Text</button>
+            <button class="btn btn-sm" data-ins="button" type="button">Button</button>
+            <button class="btn btn-sm" data-ins="image" type="button">Image</button>
+            <button class="btn btn-sm" data-ins="spacer" type="button">Space</button>
+          </div>
+          <p class="muted small">New elements take the site's fonts and colours. Then edit them like any other.</p>
+        </div>
+        </div>
 
       </section>
     </aside>
   </div>
+  <div class="pmodal" id="pgModal" hidden role="dialog" aria-modal="true" aria-labelledby="pgTitle">
+    <div class="psheet pages">
+      <div class="phead"><h2 id="pgTitle">Pages</h2><button class="btn btn-sm" id="pgClose" type="button" aria-label="Close">✕</button></div>
+      <ul class="plist" id="pgList"></ul>
+      <form class="addpage" id="pgForm">
+        <h3>Add a page</h3>
+        <label class="field"><span>Page name</span><input class="input" name="title" required maxlength="60" placeholder="About us" /></label>
+        <label class="field"><span>Start from</span><select class="input" name="from" id="pgFrom"></select></label>
+        <label class="check"><input type="checkbox" name="menu" checked /> Add it to the menu</label>
+        <button class="btn btn-primary" type="submit">Add page →</button>
+      </form>
+    </div>
+  </div>
+
   <div class="pmodal" id="pmodal" hidden role="dialog" aria-modal="true" aria-labelledby="pTitle">
     <div class="psheet">
       <div class="phead">

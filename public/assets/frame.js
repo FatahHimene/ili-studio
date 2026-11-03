@@ -62,6 +62,9 @@
       color: hex(cs.color) || '#000000', bg: bg.color, bgOwn: bg.own,
       fontSize: Math.round(parseFloat(cs.fontSize)), fontWeight: Number(cs.fontWeight) || 400, textAlign: cs.textAlign,
       radius: Math.round(parseFloat(cs.borderTopLeftRadius) || 0), padY: Math.round(parseFloat(cs.paddingTop) || 0), padX: Math.round(parseFloat(cs.paddingLeft) || 0),
+      widthPct: (() => { const p = el.parentElement?.getBoundingClientRect().width || 0; return p ? Math.min(100, Math.round((el.getBoundingClientRect().width / p) * 100)) : 100; })(),
+      widthSet: !!el.style.width, height: el.style.height ? Math.round(parseFloat(el.style.height)) : null, heightNow: Math.round(el.getBoundingClientRect().height),
+      fit: el.style.objectFit || '', mt: Math.round(parseFloat(cs.marginTop) || 0), mb: Math.round(parseFloat(cs.marginBottom) || 0),
       inline: el.getAttribute('style') || '',
     };
   }

@@ -29,6 +29,8 @@ Rules:
 - A request about layout or content (columns, grid, order, adding or removing items, a call to action, 3D, animation, redesign):
   you MUST return <wren-html> with the full new element. <wren-style> alone cannot change a layout.
 - Never claim in the note a change you did not actually make.
+- The change must be clearly VISIBLE. Never return the element's current values. For a vague request ("change the colour", "modify the hero"),
+  make a clear, tasteful choice: e.g. a different colour from the site palette with good contrast, a bigger title, a new layout.
 - Answer ONLY with these tagged blocks, each one optional, nothing before or after them:
   <wren-note>one short sentence for the site owner saying what you changed (or why nothing needed changing)</wren-note>
   <wren-style>{"css-property": "value"}</wren-style>
@@ -47,7 +49,7 @@ function instructionLanguage(text) {
   return fr > en ? 'French' : 'English';
 }
 
-function prompt({ mode, html, instruction, context, style }) {
+function prompt({ mode, html, instruction, context, style, palette }) {
   const what = mode === 'text'
     ? 'If the content changes, <wren-html> holds the new INNER HTML of the element only (text and inline tags such as <strong>, <em>, <br>).'
     : 'If the content or layout changes, <wren-html> holds the complete new element (one root element, same tag unless asked otherwise).';
@@ -57,6 +59,7 @@ Write the <wren-note> in ${instructionLanguage(instruction)}. Content inside the
 Instruction from the site owner: ${instruction}
 
 Current look of the element: ${style || 'unknown'}
+Site colour palette (most used first): ${palette?.length ? palette.join(', ') : 'unknown'}
 
 Page context (for tone, language and facts, do not copy it): ${context}
 
@@ -224,10 +227,10 @@ function callMock(user, { mode, html, instruction }) {
 }
 
 /** Ask Wren to edit an element. Returns { html, style, note, usage }. */
-export async function wren({ mode, html, instruction, context, style }) {
+export async function wren({ mode, html, instruction, context, style, palette }) {
   const st = aiStatus();
   if (!st.enabled) throw new AiError('Wren is not set up yet: add an AI key in the app settings.');
-  const user = prompt({ mode, html, instruction, context, style });
+  const user = prompt({ mode, html, instruction, context, style, palette });
   if (PROVIDER === 'mock' && process.env.AI_MOCK_DELAY_MS) await sleep(Number(process.env.AI_MOCK_DELAY_MS));
   const out = PROVIDER === 'gemini' ? await callGemini(user) : PROVIDER === 'anthropic' ? await callAnthropic(user)
     : PROVIDER === 'azure' ? await callAzure(user, SYSTEM, { design: mode === 'block' }) : callMock(user, { mode, html, instruction });

@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import * as store from './store.js';
 import { importUpload, ImportError } from './importer.js';
 import { tag } from './html.js';
+import * as cheerio from 'cheerio';
 import { applyOps, injectEditor, strip, title, elementForAi, STYLE_OK } from './html.js';
 import { wren, aiStatus, AiError, ping, askJson } from './ai.js';
 import { searchPhotos, importPhoto, saveImage, bankStatus, ImageError } from './images.js';
@@ -171,6 +172,8 @@ app.post('/api/sites/:id/wren', requireAuth, wrap(async (req, res) => {
   if (el.html.length > 60000) return res.status(400).json({ error: 'This part is too big for Wren. Select a smaller element.' });
   const mode = req.body.mode === 'text' ? 'text' : 'block';
   const look = typeof req.body.style === 'string' ? req.body.style.slice(0, 400) : '';
+  const current = req.body.current && typeof req.body.current === 'object' ? req.body.current : {};
+  const palette = await sitePalette(store.draftDir(meta.id));
 
   const jobId = store.newId();
   const job = { status: 'working', site: meta.id, at: Date.now() };
@@ -180,19 +183,27 @@ app.post('/api/sites/:id/wren', requireAuth, wrap(async (req, res) => {
 
   (async () => {
     try {
-      const out = await wren({ mode, html: mode === 'text' ? `<${el.tag}>${el.inner}</${el.tag}>` : el.html, instruction, context: el.context, style: look });
+      const out = await wren({ mode, html: mode === 'text' ? `<${el.tag}>${el.inner}</${el.tag}>` : el.html, instruction, context: el.context, style: look, palette });
       const ops = [];
       if (out.html) {
         let html = out.html;
         if (mode === 'text') html = html.replace(new RegExp(`^<${el.tag}[^>]*>([\\s\\S]*)</${el.tag}>$`, 'i'), '$1');
         ops.push(mode === 'text' ? { type: 'html', id: elId, html } : { type: 'replace', id: elId, html });
       }
+      let sameLook = false;
+      if (out.style) {
+        // drop values identical to what the element already shows (the AI sometimes "changes" a colour to itself)
+        const norm = (v) => String(v).trim().toLowerCase().replace(/\s+/g, '');
+        const same = { color: current.color, 'background-color': current.bg, 'font-size': current.fontSize ? current.fontSize + 'px' : null, 'border-radius': current.radius != null ? current.radius + 'px' : null };
+        for (const k of Object.keys(out.style)) if (same[k.toLowerCase()] && norm(same[k.toLowerCase()]) === norm(out.style[k])) delete out.style[k];
+        if (!Object.keys(out.style).length) { out.style = null; sameLook = true; }
+      }
       if (out.style) {
         const props = Object.fromEntries(Object.entries(out.style).filter(([k, v]) => STYLE_OK.has(String(k).toLowerCase()) && (typeof v === 'string' || typeof v === 'number')).map(([k, v]) => [k.toLowerCase(), String(v)]));
         if (Object.keys(props).length) ops.push({ type: 'style', id: elId, props });
       }
       console.log(`[wren] job ${jobId} ${mode} <${el.tag}> "${instruction.slice(0, 60)}" -> html:${out.html ? out.html.length + ' chars' : 'none'} style:${out.style ? JSON.stringify(out.style).slice(0, 120) : 'none'} note:"${out.note.slice(0, 100)}"`);
-      if (!ops.length) throw new AiError(out.note || 'Wren suggested no change. Try a more specific instruction.');
+      if (!ops.length) throw new AiError(sameLook ? 'Wren picked the same look as now. Say what you want, e.g. "dark blue background" or "bigger title".' : (out.note || 'Wren suggested no change. Try a more specific instruction.'));
       const layoutAsk = /column|colonne|grid|grille|layout|mise en page|r[ée]organi|3d|anim|redesign|refai|refonte|modern|add |ajout|call to action|cta|section/i.test(instruction);
       if (mode === 'block' && layoutAsk && !out.html) {
         console.warn(`[wren] job ${jobId}: layout asked but only style returned`);
@@ -202,7 +213,8 @@ app.post('/api/sites/:id/wren', requireAuth, wrap(async (req, res) => {
       let result;
       try { result = applyOps(before, ops); }
       catch (e) { console.error(`[wren] job ${jobId} could not apply:`, e.message); throw new AiError('Wren returned something unusable. Try again.'); }
-      if (result.html === before) { console.warn(`[wren] job ${jobId}: no change`); throw new AiError(out.note || 'Wren suggested no change. Try a more specific instruction.'); }
+      const sig = (h) => h.replace(/\sdata-ili-id="[^"]*"/g, '').replace(/\s+/g, ' ').trim();
+      if (sig(result.html) === sig(before)) { console.warn(`[wren] job ${jobId}: no change`); throw new AiError(out.note || 'Wren suggested no change. Try a more specific instruction.'); }
       await store.pushHistory(meta.id, page, before);
       await fs.writeFile(file, result.html);
       const m = await store.readMeta(meta.id);
@@ -235,6 +247,27 @@ app.post('/api/sites/:id/undo', requireAuth, wrap(async (req, res) => {
   res.json({ ok: true, undo: await store.historyCount(meta.id, page) });
 }));
 
+/** Most used colours of a site (from its CSS and inline styles), to keep Wren's choices on-brand. */
+async function sitePalette(dir) {
+  const counts = new Map();
+  const walk = async (d, depth = 0) => {
+    for (const e of await fs.readdir(d, { withFileTypes: true }).catch(() => [])) {
+      if (e.name === 'ili-uploads' || e.name.startsWith('.')) continue;
+      const p = path.join(d, e.name);
+      if (e.isDirectory() && depth < 3) await walk(p, depth + 1);
+      else if (/\.(css|html)$/i.test(e.name)) {
+        const txt = (await fs.readFile(p, 'utf8')).slice(0, 400000);
+        for (const m of txt.matchAll(/#([0-9a-f]{6}|[0-9a-f]{3})\b/gi)) {
+          let h = m[1].toLowerCase(); if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+          counts.set('#' + h, (counts.get('#' + h) || 0) + 1);
+        }
+      }
+    }
+  };
+  await walk(dir);
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([c]) => c);
+}
+
 const relFromPage = (page, file) => path.posix.relative(path.posix.dirname(page) === '.' ? '' : path.posix.dirname(page), file);
 
 /** Upload an image into the site (resized + compressed); returns a path relative to the page. */
@@ -249,6 +282,118 @@ app.post('/api/sites/:id/images', requireAuth, imageUpload.single('image'), wrap
     if (e instanceof ImageError) return res.status(400).json({ error: e.message });
     throw e;
   } finally { fs.rm(req.file.path, { force: true }); }
+}));
+
+// ---- pages ---------------------------------------------------------------------------------------
+const linkTarget = (fromPage, href) => {
+  if (!href || /^(https?:|mailto:|tel:|#|javascript:)/i.test(href)) return null;
+  const clean = href.split(/[?#]/)[0];
+  const base = path.posix.dirname(fromPage) === '.' ? '' : path.posix.dirname(fromPage);
+  let t = path.posix.normalize(path.posix.join(base, clean || ''));
+  if (t === '.' || t.endsWith('/') || clean === './' || clean === '') t = path.posix.join(t === '.' ? '' : t, 'index.html');
+  return t.replace(/^\.\//, '');
+};
+
+async function editPages(meta, fn) {
+  for (const page of meta.pages) {
+    const f = store.safeJoin(store.draftDir(meta.id), page);
+    const $ = cheerio.load(await fs.readFile(f, 'utf8'));
+    if (fn($, page) !== false) await fs.writeFile(f, tag($.html()));
+  }
+}
+
+/** Templates the site can use (from its theme). */
+app.get('/api/sites/:id/templates', requireAuth, wrap(async (req, res) => {
+  const meta = await store.readMeta(req.params.id);
+  const theme = meta.theme ? await getTheme(meta.theme.id) : null;
+  res.json(theme ? theme.templates.map(({ id, name, path: p }) => ({ id, name, path: p })) : []);
+}));
+
+/** Add a page. Body: { title, from: 'blank'|'duplicate'|'template', source?, template?, menu?: true } */
+app.post('/api/sites/:id/pages', requireAuth, wrap(async (req, res) => {
+  const meta = await store.readMeta(req.params.id);
+  const title = String(req.body.title || '').trim().slice(0, 60);
+  if (!title) return res.status(400).json({ error: 'Give the page a name' });
+  let file = store.slugify(title) + '.html';
+  for (let n = 2; meta.pages.includes(file) || file === 'index.html'; n++) file = `${store.slugify(title)}-${n}.html`;
+  const dir = store.draftDir(meta.id);
+  const from = ['blank', 'duplicate', 'template'].includes(req.body.from) ? req.body.from : 'blank';
+  const source = meta.pages.includes(req.body.source) ? req.body.source : 'index.html';
+  let html;
+  if (from === 'template') {
+    const theme = meta.theme ? await getTheme(meta.theme.id) : null;
+    const tpl = theme?.templates.find((t) => t.id === req.body.template);
+    if (!tpl) return res.status(404).json({ error: 'Template not found' });
+    html = await fs.readFile(path.join(theme.dir, tpl.file), 'utf8');
+  } else {
+    const $ = cheerio.load(await fs.readFile(store.safeJoin(dir, source), 'utf8'));
+    if (from === 'blank') {
+      const keep = (el) => /^(header|footer|nav|script)$/i.test(el.tagName) || $(el).find('nav').length > 0;
+      const body = $('body');
+      const kids = body.children().toArray();
+      const footer = kids.find((k) => k.tagName === 'footer');
+      kids.forEach((k) => { if (!keep(k)) $(k).remove(); });
+      const section = `<main><section style="padding: 72px 24px; max-width: 1100px; margin: 0 auto"><h1>${title.replace(/[<>&"]/g, '')}</h1><p>Write your content here, or select this text and ask Wren.</p></section></main>`;
+      if (footer) $(footer).before(section); else body.append(section);
+    }
+    $('title').first().text(`${title} · ${meta.name}`);
+    html = $.html();
+  }
+  await fs.writeFile(store.safeJoin(dir, file), tag(html));
+  meta.pages.push(file);
+  if (from === 'template' && meta.brief) {
+    try { await personalise(dir, [file], meta.brief); } catch (e) { console.warn('[pages] template personalisation skipped:', e.message); }
+  }
+  const html2 = await fs.readFile(store.safeJoin(dir, file), 'utf8');
+  if (!/<title>/i.test(html2) || from === 'template') { const $ = cheerio.load(html2); $('title').first().text(`${title} · ${meta.name}`); await fs.writeFile(store.safeJoin(dir, file), tag($.html())); }
+
+  if (req.body.menu !== false) {
+    await editPages(meta, ($, page) => {
+      const nav = $('nav').filter((_, n) => $(n).find('a').length > 0).first();
+      if (!nav.length) return false;
+      const links = nav.find('a');
+      if (links.toArray().some((a) => linkTarget(page, $(a).attr('href')) === file)) return false;
+      const last = links.last();
+      const clone = last.clone();
+      clone.removeAttr('data-ili-id').removeAttr('data-ili-slot').removeAttr('data-ili-type').removeAttr('aria-current');
+      clone.attr('href', path.posix.relative(path.posix.dirname(page) === '.' ? '' : path.posix.dirname(page), file));
+      clone.text(title);
+      last.after(clone);
+    });
+  }
+  meta.updatedAt = new Date().toISOString(); meta.dirty = true;
+  await store.writeMeta(meta.id, meta);
+  res.json({ page: file, pages: meta.pages });
+}));
+
+/** Rename a page (its title and its menu links). Body: { page, title } */
+app.patch('/api/sites/:id/pages', requireAuth, wrap(async (req, res) => {
+  const meta = await store.readMeta(req.params.id);
+  const page = String(req.body.page || ''); const title = String(req.body.title || '').trim().slice(0, 60);
+  if (!meta.pages.includes(page) || !title) return res.status(400).json({ error: 'Page and new name required' });
+  await editPages(meta, ($, p) => {
+    if (p === page) $('title').first().text(page === 'index.html' ? $('title').first().text() : `${title} · ${meta.name}`);
+    $('nav a').each((_, a) => { if (linkTarget(p, $(a).attr('href')) === page && $(a).children().length === 0) $(a).text(title); });
+  });
+  meta.updatedAt = new Date().toISOString(); meta.dirty = true;
+  await store.writeMeta(meta.id, meta);
+  res.json({ ok: true });
+}));
+
+/** Delete a page (not the home page) and its menu links. */
+app.delete('/api/sites/:id/pages', requireAuth, wrap(async (req, res) => {
+  const meta = await store.readMeta(req.params.id);
+  const page = String(req.query.page || '');
+  if (!meta.pages.includes(page)) return res.status(404).json({ error: 'Page not found' });
+  if (page === 'index.html') return res.status(400).json({ error: 'The home page cannot be deleted' });
+  await fs.rm(store.safeJoin(store.draftDir(meta.id), page), { force: true });
+  meta.pages = meta.pages.filter((p) => p !== page);
+  await editPages(meta, ($, p) => {
+    $('nav a, header a, footer a').each((_, a) => { if (linkTarget(p, $(a).attr('href')) === page) $(a).remove(); });
+  });
+  meta.updatedAt = new Date().toISOString(); meta.dirty = true;
+  await store.writeMeta(meta.id, meta);
+  res.json({ pages: meta.pages });
 }));
 
 // ---- photo library (Pixabay) ---------------------------------------------------------------
