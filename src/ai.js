@@ -24,21 +24,35 @@ Rules:
 - For a redesign of a whole section (layout, 3D, animation, gradients…), you may include ONE <style> element inside the new element.
   Scope every rule to a new class you put on the root element (e.g. .wren-hero-3d …), use only CSS (transforms, perspective, @keyframes,
   gradients, grid/flex) and make it responsive. Respect prefers-reduced-motion for animations.
-- For a request about colours, size, spacing, corners, alignment or weight, change "style" and leave "html" out.
-- Answer with ONE JSON object and nothing else:
-  {"html": "...", "style": {"css-property": "value"}, "note": "..."}
-  "html": only if the content changes (see the task for what it must contain).
-  "style": only if the look changes. Allowed properties: color, background-color, font-size, font-weight, font-style, text-align,
-    text-transform, letter-spacing, line-height, padding, margin-top, margin-bottom, border-radius, border, border-color, border-width,
-    border-style, max-width, opacity. Values in CSS (e.g. "#1d4ed8", "18px", "999px").
-  Escape the HTML properly inside the JSON string (quotes as \\", new lines as \\n).
-  "note": one short sentence for the site owner, written in the SAME LANGUAGE AS THEIR INSTRUCTION (even if the site is in another language), saying what you changed (or why nothing needed changing).`;
+- Change ONLY what the instruction asks. Do not change colours, backgrounds or spacing unless asked.
+- A request about colours, size, spacing, corners, alignment or weight on the selected element: use <wren-style> only.
+- A request about layout or content (columns, grid, order, adding or removing items, a call to action, 3D, animation, redesign):
+  you MUST return <wren-html> with the full new element. <wren-style> alone cannot change a layout.
+- Never claim in the note a change you did not actually make.
+- Answer ONLY with these tagged blocks, each one optional, nothing before or after them:
+  <wren-note>one short sentence for the site owner saying what you changed (or why nothing needed changing)</wren-note>
+  <wren-style>{"css-property": "value"}</wren-style>
+  <wren-html>the new HTML, written as normal HTML (no escaping)</wren-html>
+  Use <wren-style> only if the look of the selected element changes. Allowed properties: color, background-color, font-size, font-weight,
+    font-style, text-align, text-transform, letter-spacing, line-height, padding, margin-top, margin-bottom, border-radius, border,
+    border-color, border-width, border-style, max-width, opacity. Values in CSS (e.g. "#1d4ed8", "18px", "999px").
+  Use <wren-html> only if the content or layout changes (see the task for exactly what it must contain).
+  Always include <wren-note>.`;
+
+/** Rough language guess for the owner's instruction, so the note answers in their language. */
+function instructionLanguage(text) {
+  const t = ` ${String(text).toLowerCase()} `;
+  const fr = (t.match(/[éèêàçùôîï]|\b(le|la|les|un|une|des|du|de|et|est|ce|cette|ces|mets|met|rends|fais|change|couleur|plus|bouton|titre|texte|avec|pour|en|au|aux)\b/g) || []).length;
+  const en = (t.match(/\b(the|a|an|make|this|that|it|change|colour|color|more|button|title|text|with|for|to|and|please)\b/g) || []).length;
+  return fr > en ? 'French' : 'English';
+}
 
 function prompt({ mode, html, instruction, context, style }) {
   const what = mode === 'text'
-    ? 'If the content changes, "html" is the new INNER HTML of the element (text and inline tags such as <strong>, <em>, <br>).'
-    : 'If the content changes, "html" is the complete new element (one root element, same tag unless asked otherwise).';
+    ? 'If the content changes, <wren-html> holds the new INNER HTML of the element only (text and inline tags such as <strong>, <em>, <br>).'
+    : 'If the content or layout changes, <wren-html> holds the complete new element (one root element, same tag unless asked otherwise).';
   return `${what}
+Write the <wren-note> in ${instructionLanguage(instruction)}. Content inside the page keeps the page's own language.
 
 Instruction from the site owner: ${instruction}
 
@@ -54,22 +68,28 @@ const clean = (s) => String(s || '')
   .replace(/<think>[\s\S]*?<\/think>/gi, '') // reasoning models (e.g. DeepSeek) may include their thinking
   .trim().replace(/^```(?:json|html)?\s*/i, '').replace(/```\s*$/, '').trim();
 
-/** Read Wren's JSON answer; fall back to plain HTML for models that ignore the format. */
+/** Read Wren's tagged answer (falls back to JSON, then to plain HTML for models that ignore the format). */
 function parseAnswer(text) {
   const t = clean(text);
+  const tag = (name, greedy) => { const m = t.match(new RegExp(`<${name}>([\\s\\S]${greedy ? '*' : '*?'})</${name}>`, 'i')); return m ? m[1].trim() : null; };
+  const note = tag('wren-note'); const styleRaw = tag('wren-style'); const html = tag('wren-html', true);
+  if (note !== null || styleRaw !== null || html !== null) {
+    if (html === null && /<wren-html>/i.test(t)) throw new AiError('Wren\'s answer was cut. Select a smaller part, or ask for one change at a time.');
+    let style = null;
+    if (styleRaw) {
+      try { style = JSON.parse(styleRaw.slice(styleRaw.indexOf('{'), styleRaw.lastIndexOf('}') + 1)); }
+      catch { // accept "property: value;" lines too
+        style = Object.fromEntries(styleRaw.split(/[;\n]/).map((l) => l.split(':')).filter((p) => p.length >= 2).map(([k, ...v]) => [k.trim().replace(/["{}]/g, ''), v.join(':').trim().replace(/["{},]/g, '')]).filter(([k, v]) => k && v));
+      }
+    }
+    return { html: html || null, style: style && typeof style === 'object' ? style : null, note: (note || '').slice(0, 300) };
+  }
   const a = t.indexOf('{'); const b = t.lastIndexOf('}');
-  if (a !== -1 && b > a) {
+  if (a === 0 && b > a) {
     try {
       const j = JSON.parse(t.slice(a, b + 1));
-      if (j && typeof j === 'object' && ('html' in j || 'style' in j || 'note' in j)) {
-        return {
-          html: typeof j.html === 'string' && j.html.trim() ? j.html.trim() : null,
-          style: j.style && typeof j.style === 'object' && !Array.isArray(j.style) ? j.style : null,
-          note: typeof j.note === 'string' ? j.note.slice(0, 300) : '',
-        };
-      }
-    } catch { /* not JSON */ }
-    if (t.trimStart().startsWith('{')) throw new AiError('Wren\'s answer was cut or malformed. Try again, or select a smaller part.');
+      return { html: typeof j.html === 'string' && j.html.trim() ? j.html.trim() : null, style: j.style && typeof j.style === 'object' ? j.style : null, note: typeof j.note === 'string' ? j.note.slice(0, 300) : '' };
+    } catch { throw new AiError('Wren\'s answer was malformed. Try again.'); }
   }
   return { html: t || null, style: null, note: '' };
 }
@@ -199,7 +219,7 @@ function callMock(user, { mode, html, instruction }) {
   if (/colou?r|couleur/i.test(instruction)) j = { style: { 'background-color': '#C8F031', color: '#0D1221' }, note: 'Mock: colour changed.' };
   else if (/nothing|rien/i.test(instruction)) j = { note: 'Mock: nothing to change.' };
   else j = { html: mode === 'text' ? 'Wren rewrote this text.' : html.replace(/>([^<]{3,})</, '>Wren rewrote this section.<'), note: 'Mock: rewritten.' };
-  const text = JSON.stringify(j);
+  const text = [j.note && `<wren-note>${j.note}</wren-note>`, j.style && `<wren-style>${JSON.stringify(j.style)}</wren-style>`, j.html && `<wren-html>${j.html}</wren-html>`].filter(Boolean).join('\n');
   return { text, usage: { input: user.length / 4, output: text.length / 4 } };
 }
 

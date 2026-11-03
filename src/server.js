@@ -187,6 +187,11 @@ app.post('/api/sites/:id/wren', requireAuth, wrap(async (req, res) => {
       }
       console.log(`[wren] job ${jobId} ${mode} <${el.tag}> "${instruction.slice(0, 60)}" -> html:${out.html ? out.html.length + ' chars' : 'none'} style:${out.style ? JSON.stringify(out.style).slice(0, 120) : 'none'} note:"${out.note.slice(0, 100)}"`);
       if (!ops.length) throw new AiError(out.note || 'Wren suggested no change. Try a more specific instruction.');
+      const layoutAsk = /column|colonne|grid|grille|layout|mise en page|r[ée]organi|3d|anim|redesign|refai|refonte|modern|add |ajout|call to action|cta|section/i.test(instruction);
+      if (mode === 'block' && layoutAsk && !out.html) {
+        console.warn(`[wren] job ${jobId}: layout asked but only style returned`);
+        throw new AiError('Wren could not restructure this section (the AI only suggested a style change). Try again, or use a stronger design model (AZURE_OPENAI_DESIGN_DEPLOYMENT).');
+      }
       const before = await fs.readFile(file, 'utf8'); // apply on the latest version of the page
       let result;
       try { result = applyOps(before, ops); }
