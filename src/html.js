@@ -56,7 +56,7 @@ export function sanitizeInline(fragment) {
     if (!INLINE_OK.has(el.tagName)) { $el.replaceWith($el.contents()); return; }
     for (const name of Object.keys(el.attribs || {})) {
       const v = el.attribs[name];
-      if (!ATTR_OK.has(name.toLowerCase()) || name.startsWith('on') || ((name === 'href' || name === 'src') && badUrl(v))) $el.removeAttr(name);
+      if ((!ATTR_OK.has(name.toLowerCase()) && !/^data-[a-z0-9_-]+$/i.test(name)) || name.startsWith('on') || ((name === 'href' || name === 'src') && badUrl(v))) $el.removeAttr(name);
     }
   });
   return root.html() ?? '';

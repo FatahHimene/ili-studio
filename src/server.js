@@ -32,6 +32,8 @@ app.use((req, res, next) => {
 // Site content (draft in the editor, published sites) runs in an opaque origin, so its scripts
 // can never reach the admin API or cookies.
 const SANDBOX = 'sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads';
+// Sandboxed pages have an opaque origin, so fonts and fetches to their own files need CORS.
+const corsOk = (res) => res.setHeader('Access-Control-Allow-Origin', '*');
 
 const upload = multer({ dest: path.join(os.tmpdir(), 'ili-uploads'), limits: { fileSize: 100 * 1024 * 1024, files: 1 } });
 const imageUpload = multer({
@@ -271,6 +273,7 @@ app.get('/frame/:id/:token/{*path}', wrap(async (req, res) => {
   if (!fss.existsSync(file)) return res.status(404).send('Not found');
   res.setHeader('Content-Security-Policy', SANDBOX);
   res.setHeader('Cache-Control', 'no-store');
+  corsOk(res);
   if (/\.html?$/i.test(file)) return res.type('html').send(injectEditor(await fs.readFile(file, 'utf8'), VERSION));
   res.sendFile(file);
 }));
@@ -287,6 +290,7 @@ app.get('/s/:slug/{*path}', wrap(async (req, res) => {
   if (!fss.existsSync(file)) return res.status(404).send('Page not found');
   res.setHeader('Content-Security-Policy', SANDBOX);
   res.setHeader('Cache-Control', 'no-cache');
+  corsOk(res);
   res.sendFile(file);
 }));
 
