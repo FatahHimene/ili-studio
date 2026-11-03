@@ -14,33 +14,60 @@ export function aiStatus() {
 
 export class AiError extends Error {}
 
-const SYSTEM = `You are Wren, the AI assistant inside ili studio, a website editor for small UK businesses.
-You edit ONE element of an existing web page at a time.
+const SYSTEM = `You are Wren, the AI assistant inside ili studio, a website editor for small businesses.
+You edit ONE selected element of an existing web page: its content, its look (CSS), or both.
 Rules:
-- Keep the language of the original content: French stays French, English stays English. When writing English, use British English (colour, organise, centre). Plain, warm, professional. No emoji unless the original uses them.
-- Always apply the instruction: the result must differ from the original.
-- Never invent facts: no made-up prices, phone numbers, addresses, awards, reviews or statistics. Keep the ones that are already there.
+- Keep the language of the original content: French stays French, English stays English. When writing English, use British English. Plain, warm, professional. No emoji unless the original uses them.
+- Never invent facts: no made-up prices, phone numbers, addresses, awards, reviews or statistics.
 - Keep the existing HTML structure, tags and class names unless the instruction asks for a different layout.
-- Never add <script>, <iframe>, inline event handlers (onclick…) or external stylesheets.
-- Reply with the HTML only. No explanation, no Markdown code fences.`;
+- Never add <script>, <iframe>, inline event handlers or external stylesheets.
+- For a request about colours, size, spacing, corners, alignment or weight, change "style" and leave "html" out.
+- Answer with ONE JSON object and nothing else:
+  {"html": "...", "style": {"css-property": "value"}, "note": "..."}
+  "html": only if the content changes (see the task for what it must contain).
+  "style": only if the look changes. Allowed properties: color, background-color, font-size, font-weight, font-style, text-align,
+    text-transform, letter-spacing, line-height, padding, margin-top, margin-bottom, border-radius, border, border-color, border-width,
+    border-style, max-width, opacity. Values in CSS (e.g. "#1d4ed8", "18px", "999px").
+  "note": one short sentence for the site owner, in their language, saying what you changed (or why nothing needed changing).`;
 
-function prompt({ mode, html, instruction, context }) {
+function prompt({ mode, html, instruction, context, style }) {
   const what = mode === 'text'
-    ? 'Rewrite the INNER HTML of this text element. Return only the new inner HTML (text and inline tags such as <strong>, <em>, <a>, <br>).'
-    : 'Rewrite this whole element. Return the complete new element (one root element, same tag unless asked otherwise).';
+    ? 'If the content changes, "html" is the new INNER HTML of the element (text and inline tags such as <strong>, <em>, <br>).'
+    : 'If the content changes, "html" is the complete new element (one root element, same tag unless asked otherwise).';
   return `${what}
 
 Instruction from the site owner: ${instruction}
 
-Page context (for tone and facts, do not copy it): ${context}
+Current look of the element: ${style || 'unknown'}
 
-Element to edit:
+Page context (for tone, language and facts, do not copy it): ${context}
+
+Element:
 ${html}`;
 }
 
 const clean = (s) => String(s || '')
   .replace(/<think>[\s\S]*?<\/think>/gi, '') // reasoning models (e.g. DeepSeek) may include their thinking
-  .trim().replace(/^```(?:html)?\s*/i, '').replace(/```\s*$/, '').trim();
+  .trim().replace(/^```(?:json|html)?\s*/i, '').replace(/```\s*$/, '').trim();
+
+/** Read Wren's JSON answer; fall back to plain HTML for models that ignore the format. */
+function parseAnswer(text) {
+  const t = clean(text);
+  const a = t.indexOf('{'); const b = t.lastIndexOf('}');
+  if (a !== -1 && b > a) {
+    try {
+      const j = JSON.parse(t.slice(a, b + 1));
+      if (j && typeof j === 'object' && ('html' in j || 'style' in j || 'note' in j)) {
+        return {
+          html: typeof j.html === 'string' && j.html.trim() ? j.html.trim() : null,
+          style: j.style && typeof j.style === 'object' && !Array.isArray(j.style) ? j.style : null,
+          note: typeof j.note === 'string' ? j.note.slice(0, 300) : '',
+        };
+      }
+    } catch { /* not JSON */ }
+  }
+  return { html: t || null, style: null, note: '' };
+}
 
 const TIMEOUT = Number(process.env.AI_TIMEOUT_MS || 90000);
 // Turn "thinking" off for speed. Newer models use thinkingLevel, older ones thinkingBudget; try each, remember what works.
@@ -161,21 +188,24 @@ async function callAzure(user, system = SYSTEM) {
   return { text, usage: { input: d.usage?.prompt_tokens || 0, output: d.usage?.completion_tokens || 0 } };
 }
 
-function callMock(user, { mode, html }) {
-  const m = html.match(/^<([a-z0-9]+)/i);
-  const text = mode === 'text' ? 'Wren rewrote this text.' : html.replace(/>([^<]{3,})</, '>Wren rewrote this section.<').replace(/^<([a-z0-9]+)/i, `<${m ? m[1] : 'div'}`);
+function callMock(user, { mode, html, instruction }) {
+  let j;
+  if (/colou?r|couleur/i.test(instruction)) j = { style: { 'background-color': '#C8F031', color: '#0D1221' }, note: 'Mock: colour changed.' };
+  else if (/nothing|rien/i.test(instruction)) j = { note: 'Mock: nothing to change.' };
+  else j = { html: mode === 'text' ? 'Wren rewrote this text.' : html.replace(/>([^<]{3,})</, '>Wren rewrote this section.<'), note: 'Mock: rewritten.' };
+  const text = JSON.stringify(j);
   return { text, usage: { input: user.length / 4, output: text.length / 4 } };
 }
 
-/** Ask Wren to rewrite an element. Returns { html, usage }. */
-export async function wren({ mode, html, instruction, context }) {
+/** Ask Wren to edit an element. Returns { html, style, note, usage }. */
+export async function wren({ mode, html, instruction, context, style }) {
   const st = aiStatus();
   if (!st.enabled) throw new AiError('Wren is not set up yet: add an AI key in the app settings.');
-  const user = prompt({ mode, html, instruction, context });
+  const user = prompt({ mode, html, instruction, context, style });
   if (PROVIDER === 'mock' && process.env.AI_MOCK_DELAY_MS) await sleep(Number(process.env.AI_MOCK_DELAY_MS));
   const out = PROVIDER === 'gemini' ? await callGemini(user) : PROVIDER === 'anthropic' ? await callAnthropic(user)
-    : PROVIDER === 'azure' ? await callAzure(user) : callMock(user, { mode, html });
-  return { html: clean(out.text), usage: out.usage };
+    : PROVIDER === 'azure' ? await callAzure(user) : callMock(user, { mode, html, instruction });
+  return { ...parseAnswer(out.text), usage: out.usage };
 }
 
 /** Quick health check of the AI connection (used by /api/ai/ping). */

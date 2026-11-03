@@ -91,7 +91,7 @@ export function elementForAi(html, id) {
 }
 
 // ---- inline styles ------------------------------------------------------------
-const STYLE_OK = new Set(['color', 'background-color', 'background-image', 'font-size', 'font-weight', 'font-style', 'text-align', 'text-transform',
+export const STYLE_OK = new Set(['color', 'background-color', 'background-image', 'font-size', 'font-weight', 'font-style', 'text-align', 'text-transform',
   'letter-spacing', 'line-height', 'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'margin-top', 'margin-bottom',
   'border-radius', 'border', 'border-color', 'border-width', 'border-style', 'width', 'max-width', 'opacity']);
 

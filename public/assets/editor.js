@@ -233,7 +233,7 @@ window.addEventListener('message', (e) => {
 
 // ---- Wren ---------------------------------------------------------------------------
 const ai = { enabled: false };
-const CHIPS_TEXT = ['Make it shorter', 'Make it friendlier', 'More professional', 'Fix spelling and grammar', 'Make it more persuasive'];
+const CHIPS_TEXT = ['Make it shorter', 'Make it friendlier', 'More professional', 'Fix spelling and grammar', 'Make it stand out more'];
 const CHIPS_BLOCK = ['Make this section more modern', 'Add a clear call to action', 'Reorganise as 3 columns', 'Rewrite the text to be clearer'];
 function wrenUi(info) {
   const g = $('#gWren');
@@ -255,7 +255,7 @@ async function askWren() {
   $('#canvas').classList.add('thinking');
   const sel = state.sel;
   try {
-    const start = await api('/wren', { method: 'POST', body: JSON.stringify({ page: state.page, id: sel.id, instruction, mode: sel.canText && !['section', 'div', 'header', 'footer', 'article'].includes(sel.tag) ? 'text' : 'block' }) });
+    const start = await api('/wren', { method: 'POST', body: JSON.stringify({ page: state.page, id: sel.id, instruction, style: sel.style ? `text ${sel.style.color}, background ${sel.style.bgOwn ? sel.style.bg : 'none (inherits ' + sel.style.bg + ')'}, ${sel.style.fontSize}px, weight ${sel.style.fontWeight}, corners ${sel.style.radius}px, padding ${sel.style.padY}px ${sel.style.padX}px` : '', mode: sel.canText && !['section', 'div', 'header', 'footer', 'article'].includes(sel.tag) ? 'text' : 'block' }) });
     let d; const t0 = Date.now();
     for (;;) {
       await new Promise((r) => setTimeout(r, 1500));
@@ -268,7 +268,7 @@ async function askWren() {
     $('#undo').disabled = !d.undo; state.meta.dirty = true; setStatus();
     state.reselect = sel.id; loadFrame();
     $('#wrenInput').value = '';
-    toast('Wren updated this part · <a href="#" id="tUndo">Undo</a>');
+    toast(`${esc(d.note || 'Wren updated this part')} · <a href="#" id="tUndo">Undo</a>`);
     setTimeout(() => { const u = document.getElementById('tUndo'); if (u) u.onclick = (ev) => { ev.preventDefault(); undo(); }; }, 0);
   } catch (e) { toast(esc(e.name === 'TimeoutError' ? 'Wren took too long. Try again or select a smaller part.' : e.message), true); }
   finally { go.classList.remove('busy'); go.textContent = 'Ask Wren →'; $('#canvas').classList.remove('thinking'); }

@@ -8,7 +8,7 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import * as store from './store.js';
 import { importUpload, ImportError } from './importer.js';
-import { applyOps, injectEditor, strip, title, elementForAi } from './html.js';
+import { applyOps, injectEditor, strip, title, elementForAi, STYLE_OK } from './html.js';
 import { wren, aiStatus, AiError, ping } from './ai.js';
 import { requireAuth, login, logout, isAuthed, frameToken, checkFrameToken } from './auth.js';
 
@@ -164,6 +164,7 @@ app.post('/api/sites/:id/wren', requireAuth, wrap(async (req, res) => {
   try { el = elementForAi(snapshot, elId); } catch (e) { return res.status(400).json({ error: e.message }); }
   if (el.html.length > 30000) return res.status(400).json({ error: 'This part is too big for Wren. Select a smaller element.' });
   const mode = req.body.mode === 'text' ? 'text' : 'block';
+  const look = typeof req.body.style === 'string' ? req.body.style.slice(0, 400) : '';
 
   const jobId = store.newId();
   const job = { status: 'working', site: meta.id, at: Date.now() };
@@ -173,22 +174,31 @@ app.post('/api/sites/:id/wren', requireAuth, wrap(async (req, res) => {
 
   (async () => {
     try {
-      const out = await wren({ mode, html: mode === 'text' ? `<${el.tag}>${el.inner}</${el.tag}>` : el.html, instruction, context: el.context });
-      let html = out.html;
-      if (mode === 'text') html = html.replace(new RegExp(`^<${el.tag}[^>]*>([\\s\\S]*)</${el.tag}>$`, 'i'), '$1');
+      const out = await wren({ mode, html: mode === 'text' ? `<${el.tag}>${el.inner}</${el.tag}>` : el.html, instruction, context: el.context, style: look });
+      const ops = [];
+      if (out.html) {
+        let html = out.html;
+        if (mode === 'text') html = html.replace(new RegExp(`^<${el.tag}[^>]*>([\\s\\S]*)</${el.tag}>$`, 'i'), '$1');
+        ops.push(mode === 'text' ? { type: 'html', id: elId, html } : { type: 'replace', id: elId, html });
+      }
+      if (out.style) {
+        const props = Object.fromEntries(Object.entries(out.style).filter(([k, v]) => STYLE_OK.has(String(k).toLowerCase()) && (typeof v === 'string' || typeof v === 'number')).map(([k, v]) => [k.toLowerCase(), String(v)]));
+        if (Object.keys(props).length) ops.push({ type: 'style', id: elId, props });
+      }
+      console.log(`[wren] job ${jobId} ${mode} <${el.tag}> "${instruction.slice(0, 60)}" -> html:${out.html ? out.html.length + ' chars' : 'none'} style:${out.style ? JSON.stringify(out.style).slice(0, 120) : 'none'} note:"${out.note.slice(0, 100)}"`);
+      if (!ops.length) throw new AiError(out.note || 'Wren suggested no change. Try a more specific instruction.');
       const before = await fs.readFile(file, 'utf8'); // apply on the latest version of the page
-      console.log(`[wren] job ${jobId} ${mode} <${el.tag}> "${instruction.slice(0, 60)}" -> ${html.length} chars: ${html.replace(/\s+/g, ' ').slice(0, 160)}`);
       let result;
-      try { result = applyOps(before, [mode === 'text' ? { type: 'html', id: elId, html } : { type: 'replace', id: elId, html }]); }
+      try { result = applyOps(before, ops); }
       catch (e) { console.error(`[wren] job ${jobId} could not apply:`, e.message); throw new AiError('Wren returned something unusable. Try again.'); }
-      if (result.html === before) { console.warn(`[wren] job ${jobId}: no change`); throw new AiError('Wren answered but suggested no change. Try a more specific instruction.'); }
+      if (result.html === before) { console.warn(`[wren] job ${jobId}: no change`); throw new AiError(out.note || 'Wren suggested no change. Try a more specific instruction.'); }
       await store.pushHistory(meta.id, page, before);
       await fs.writeFile(file, result.html);
       const m = await store.readMeta(meta.id);
       m.updatedAt = new Date().toISOString(); m.dirty = true;
       m.aiUsage = { calls: (m.aiUsage?.calls || 0) + 1, input: (m.aiUsage?.input || 0) + out.usage.input, output: (m.aiUsage?.output || 0) + out.usage.output };
       await store.writeMeta(meta.id, m);
-      Object.assign(job, { status: 'done', undo: await store.historyCount(meta.id, page) });
+      Object.assign(job, { status: 'done', note: out.note, undo: await store.historyCount(meta.id, page) });
     } catch (e) {
       if (!(e instanceof AiError)) console.error('[wren] job failed:', e);
       Object.assign(job, { status: 'error', error: e instanceof AiError ? e.message : 'Wren hit a problem. Try again.' });
@@ -199,7 +209,7 @@ app.post('/api/sites/:id/wren', requireAuth, wrap(async (req, res) => {
 app.get('/api/sites/:id/wren/:job', requireAuth, (req, res) => {
   const job = jobs.get(req.params.job);
   if (!job || job.site !== req.params.id) return res.status(404).json({ error: 'Unknown Wren task' });
-  res.json({ status: job.status, error: job.error, undo: job.undo });
+  res.json({ status: job.status, error: job.error, note: job.note, undo: job.undo });
 });
 
 app.post('/api/sites/:id/undo', requireAuth, wrap(async (req, res) => {
