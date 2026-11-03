@@ -36,6 +36,7 @@ export function strip(html) {
   const $ = load(html);
   $(`[${ID_ATTR}]`).removeAttr(ID_ATTR);
   $('script[data-ili-editor]').remove();
+  for (const a of ['data-ili-slot', 'data-ili-hint', 'data-ili-max', 'data-ili-query', 'data-ili-orientation', 'data-ili-type', 'data-ili-optional']) $(`[${a}]`).removeAttr(a);
   return $.html();
 }
 

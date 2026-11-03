@@ -68,7 +68,7 @@ function relativiseCss(css, cssPath, exists) {
  * @param {string} filePath temporary upload path
  * @param {string} originalName name of the uploaded file
  */
-export async function importUpload(filePath, originalName, destDir) {
+export async function readArchive(filePath, originalName) {
   const files = new Map(); // relative path -> Buffer
   if (/\.zip$/i.test(originalName)) {
     let zip;
@@ -90,7 +90,21 @@ export async function importUpload(filePath, originalName, destDir) {
   } else {
     throw new ImportError('Please upload a .zip or .html file');
   }
+  return files;
+}
 
+/** Write files safely into destDir. */
+export async function writeFiles(files, destDir) {
+  for (const [p, buf] of files) {
+    const target = path.join(destDir, p);
+    if (!target.startsWith(destDir + path.sep)) throw new ImportError('Unsafe path');
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, buf);
+  }
+}
+
+export async function importUpload(filePath, originalName, destDir) {
+  const files = await readArchive(filePath, originalName);
   const { root, entry } = findRoot([...files.keys()]);
   const site = new Map();
   for (const [p, buf] of files) if (p.startsWith(root)) site.set(p.slice(root.length), buf);

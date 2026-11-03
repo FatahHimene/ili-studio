@@ -62,3 +62,18 @@ input[type=range] { width: 100%; accent-color: var(--ink); }
 .seg.al { width: 100%; }
 .seg.al button { flex: 1; font-size: 15px; }
 #sel select.input { padding: 8px; font-size: 13px; }
+
+/* photo library */
+.pmodal { position: fixed; inset: 0; background: rgba(13,18,33,.55); display: grid; place-items: center; padding: 20px; z-index: 60; }
+.psheet { width: min(900px, 100%); max-height: calc(100vh - 40px); overflow: auto; background: var(--paper); border: 1px solid var(--ink); border-radius: var(--r2); box-shadow: 10px 10px 0 var(--signal); padding: 20px; display: grid; gap: 14px; }
+.phead { display: flex; align-items: center; justify-content: space-between; }
+.phead h2 { font-size: 22px; }
+.psearch { display: flex; gap: 8px; }
+.pchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.pchips button { font: 500 12px var(--body); border: 1px solid var(--ink); background: var(--white); border-radius: 999px; padding: 5px 10px; cursor: pointer; }
+.pgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; min-height: 120px; }
+.pgrid button { position: relative; padding: 0; border: 1px solid var(--grid); border-radius: var(--r); overflow: hidden; background: var(--white); cursor: pointer; aspect-ratio: 4 / 3; }
+.pgrid button img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pgrid button:hover { outline: 3px solid var(--signal); outline-offset: 1px; }
+.pgrid button.busy::after { content: 'Adding…'; position: absolute; inset: 0; display: grid; place-items: center; background: rgba(13,18,33,.6); color: #fff; font-weight: 600; font-size: 13px; }
+.pcredit { font-size: 12px; color: var(--slate); margin: 0; }

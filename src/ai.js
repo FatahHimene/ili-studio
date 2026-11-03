@@ -154,12 +154,12 @@ async function callGeminiOnce(user, system, model) {
   return { text, usage: { input: d.usageMetadata?.promptTokenCount || 0, output: d.usageMetadata?.candidatesTokenCount || 0 } };
 }
 
-async function callAnthropic(user) {
+async function callAnthropic(user, system = SYSTEM) {
   const model = process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5';
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model, max_tokens: 4096, system: SYSTEM, messages: [{ role: 'user', content: user }] }),
+    body: JSON.stringify({ model, max_tokens: 8000, system, messages: [{ role: 'user', content: user }] }),
     signal: AbortSignal.timeout(TIMEOUT),
   }).catch((e) => { console.error('[wren] anthropic network error:', e.name, e.message); throw new AiError(e.name === 'TimeoutError' ? 'Wren took too long to answer. Try again.' : 'Wren could not reach the AI service.'); });
   const d = await r.json().catch(() => ({}));
@@ -246,4 +246,24 @@ export async function ping() {
     const model = { gemini: process.env.GEMINI_MODEL || 'gemini-flash-latest', anthropic: process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5', azure: process.env.AZURE_OPENAI_DEPLOYMENT, mock: 'mock' }[PROVIDER];
     return { ok: true, provider: st.provider, model, reply: out.text.trim().slice(0, 50), ms: Date.now() - t0 };
   } catch (e) { return { ok: false, provider: st.provider, error: e.message, ms: Date.now() - t0 }; }
+}
+
+/**
+ * Ask the AI for a JSON object (used for theme personalisation and photo suggestions).
+ * @param {{system: string, user: string, mock: () => object, maxTokens?: number}} q
+ */
+export async function askJson({ system, user, mock }) {
+  const st = aiStatus();
+  if (!st.enabled) throw new AiError('Wren is not set up yet: add an AI key in the app settings.');
+  if (PROVIDER === 'mock') {
+    if (process.env.AI_MOCK_DELAY_MS) await sleep(Number(process.env.AI_MOCK_DELAY_MS));
+    return { data: mock(), usage: { input: user.length / 4, output: 200 } };
+  }
+  const sys = `${system}\nAnswer with ONE valid JSON object only, no Markdown, no explanation.`;
+  const out = PROVIDER === 'gemini' ? await callGemini(user, sys) : PROVIDER === 'anthropic' ? await callAnthropic(user, sys) : await callAzure(user, sys);
+  const t = clean(out.text);
+  const a = t.indexOf('{'); const b = t.lastIndexOf('}');
+  if (a === -1 || b <= a) throw new AiError('Wren\'s answer could not be read. Try again.');
+  try { return { data: JSON.parse(t.slice(a, b + 1)), usage: out.usage }; }
+  catch { console.error('[wren] bad JSON:', t.slice(0, 300)); throw new AiError('Wren\'s answer could not be read. Try again.'); }
 }

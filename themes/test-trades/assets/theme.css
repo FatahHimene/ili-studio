@@ -1,0 +1,22 @@
+:root { --ili-primary: #1E3A6E; --ili-accent: #F4B23E; --ili-ink: #16181D; --ili-bg: #FFFFFF; --ili-soft: #F3F5F9;
+  --ili-font-head: Georgia, 'Times New Roman', serif; --ili-font-body: system-ui, -apple-system, 'Segoe UI', sans-serif; --ili-radius: 10px; }
+* { box-sizing: border-box; } body { margin: 0; font: 17px/1.6 var(--ili-font-body); color: var(--ili-ink); background: var(--ili-bg); }
+img { max-width: 100%; display: block; } a { color: inherit; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+h1, h2, h3 { font-family: var(--ili-font-head); line-height: 1.15; margin: 0 0 12px; }
+.nav { display: flex; align-items: center; justify-content: space-between; padding: 18px 0; gap: 20px; }
+.brand { font: 700 22px var(--ili-font-head); text-decoration: none; color: var(--ili-primary); }
+.nav nav { display: flex; gap: 22px; } .nav nav a { text-decoration: none; font-weight: 600; }
+.btn { display: inline-block; background: var(--ili-accent); color: var(--ili-ink); padding: 13px 22px; border-radius: var(--ili-radius); font-weight: 700; text-decoration: none; }
+.btn.alt { background: var(--ili-primary); color: #fff; }
+.hero { background: var(--ili-soft); padding: 72px 0; }
+.hero .wrap { display: grid; grid-template-columns: 1.1fr 1fr; gap: 48px; align-items: center; }
+.hero h1 { font-size: clamp(36px, 5vw, 56px); color: var(--ili-primary); }
+.hero p { font-size: 19px; margin: 0 0 24px; }
+.hero img { border-radius: calc(var(--ili-radius) * 2); aspect-ratio: 4 / 3; object-fit: cover; width: 100%; }
+.services { padding: 80px 0; } .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-top: 28px; }
+.card { background: var(--ili-soft); border-radius: var(--ili-radius); overflow: hidden; }
+.card img { aspect-ratio: 16 / 10; object-fit: cover; width: 100%; } .card div { padding: 20px; }
+.band { background: var(--ili-primary); color: #fff; padding: 64px 0; text-align: center; } .band h2 { color: #fff; }
+.contact { padding: 72px 0; } footer { background: var(--ili-ink); color: #cfd3dc; padding: 28px 0; font-size: 15px; }
+@media (max-width: 800px) { .hero .wrap, .grid { grid-template-columns: 1fr; } .nav nav { display: none; } }

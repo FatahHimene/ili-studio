@@ -7,57 +7,84 @@
   <title>Your sites · ili studio</title>
   <link rel="icon" href="/_ili/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/_ili/app.css" />
-  <style>
-    header { display: flex; align-items: center; gap: 16px; height: 64px; padding: 0 24px; background: rgba(246,247,249,.9); border-bottom: 1px solid var(--grid); position: sticky; top: 0; z-index: 5; backdrop-filter: blur(10px); }
-    header form { margin-left: auto; }
-    main { max-width: 1200px; margin: 0 auto; padding: 48px 24px 96px; }
-    .top { display: flex; justify-content: space-between; align-items: end; gap: 24px; margin-bottom: 32px; flex-wrap: wrap; }
-    .top h1 { font-size: 44px; margin-top: 10px; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
-    .drop { border: 1.5px dashed var(--ink); border-radius: var(--r2); background: var(--white); padding: 28px; display: grid; gap: 14px; align-content: center; min-height: 340px; transition: background .15s, box-shadow .15s; }
-    .drop.over { background: #F4FBDC; box-shadow: 6px 6px 0 var(--signal); }
-    .drop h2 { font-size: 24px; }
-    .drop .row { display: flex; gap: 8px; flex-wrap: wrap; }
-    .card { background: var(--white); border: 1px solid var(--ink); border-radius: var(--r2); overflow: hidden; display: flex; flex-direction: column; transition: transform .15s, box-shadow .15s; }
-    .card:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 var(--signal); }
-    .thumb { position: relative; height: 190px; overflow: hidden; border-bottom: 1px solid var(--ink); background: var(--paper); display: block; }
-    .thumb iframe { width: 1280px; height: 800px; border: 0; transform: scale(.25); transform-origin: 0 0; pointer-events: none; background: #fff; }
-    .thumb::after { content: ''; position: absolute; inset: 0; }
-    .meta { padding: 18px; display: grid; gap: 10px; flex: 1; }
-    .meta h3 { font-size: 19px; }
-    .facts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font: 400 12px var(--mono); color: var(--slate); }
-    .acts { display: flex; gap: 8px; padding: 0 18px 18px; flex-wrap: wrap; }
-    .acts .del { margin-left: auto; }
-    .progress { height: 4px; background: var(--grid); border-radius: 2px; overflow: hidden; }
-    .progress i { display: block; height: 100%; width: 0; background: var(--ink); transition: width .2s; }
-    .empty { color: var(--slate); }
-  </style>
+  <link rel="stylesheet" href="/_ili/shell.css" />
+  <link rel="stylesheet" href="/_ili/dashboard.css" />
 </head>
 <body>
-  <header>
+  <header class="top">
     <a class="logo" href="/"><span class="i"><span class="cur"></span>ı</span>li studio<small>Prototype</small></a>
+    <nav class="tabs"><a href="/" aria-current="page">Sites</a><a href="/themes">Themes</a></nav>
     <form method="post" action="/logout"><button class="btn btn-sm" type="submit">Sign out</button></form>
   </header>
   <main>
-    <div class="top">
-      <div><span class="label">Your sites</span><h1>Bring a site. Edit anything.</h1></div>
-      <p class="muted" style="max-width:44ch;margin:0">Upload a ZIP or HTML file made with ChatGPT, Claude, Lovable or any tool. Then click any part of it to edit, and publish.</p>
+    <div class="head">
+      <div><span class="label">Your sites</span><h1>Start a website</h1></div>
+      <p class="muted" style="max-width:46ch;margin:0">Pick a designer-made theme and let Wren fill it in from your brief, or bring a site you already made with an AI tool.</p>
     </div>
-    <div class="grid" id="grid">
-      <form class="drop" id="drop">
-        <span class="label">New site</span>
-        <h2>Drop a .zip or .html file here</h2>
-        <p class="muted" style="margin:0">Or choose a file. Max 100 MB.</p>
-        <label class="field"><span>Site name (optional)</span><input class="input" name="name" placeholder="Leeds Plumbing" maxlength="80" /></label>
+
+    <div class="starts">
+      <button class="start primary" id="fromTheme" type="button">
+        <span class="label">Recommended</span>
+        <b>Start from a theme</b>
+        <span>Designer-made, personalised by AI with your texts and photos in one click.</span>
+        <span class="go">Choose a theme →</span>
+      </button>
+      <form class="start drop" id="drop">
+        <span class="label">Import</span>
+        <b>Bring your own site</b>
+        <span>Drop a .zip or .html made with ChatGPT, Claude, Lovable or any tool.</span>
         <input type="file" id="file" name="file" accept=".zip,.html,.htm" hidden />
-        <div class="row">
-          <button class="btn btn-primary" type="button" id="choose">Choose a file →</button>
-        </div>
+        <span class="row"><button class="btn btn-sm" type="button" id="choose">Choose a file</button><span class="muted" id="status" aria-live="polite"></span></span>
         <div class="progress" hidden id="prog"><i></i></div>
-        <p class="muted" id="status" style="margin:0;font-size:13px" aria-live="polite"></p>
       </form>
     </div>
+
+    <h2 class="sub">Your sites</h2>
+    <div class="grid" id="grid"><p class="muted empty" id="empty" hidden>No sites yet.</p></div>
   </main>
+
+  <!-- New site from a theme -->
+  <div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <div class="sheet">
+      <div class="sheet-head">
+        <h2 id="mTitle">Choose a theme</h2>
+        <span class="steps" id="mSteps"><b>1 Theme</b> · 2 Your business · 3 Personalise</span>
+        <button class="btn btn-sm x" id="mClose" type="button" aria-label="Close">✕</button>
+      </div>
+      <div class="sheet-body">
+        <section id="stepTheme">
+          <div class="cats" id="cats"></div>
+          <div class="tgrid" id="tgrid"></div>
+        </section>
+
+        <form id="stepBrief" hidden class="brief">
+          <div class="chosen" id="chosen"></div>
+          <div class="fgrid">
+            <label class="field"><span>Business name *</span><input class="input" name="business" required maxlength="80" placeholder="Leeds Plumbing Co" /></label>
+            <label class="field"><span>Trade / activity *</span><input class="input" name="trade" required maxlength="80" placeholder="Plumber" /></label>
+            <label class="field"><span>Town or area</span><input class="input" name="town" maxlength="80" placeholder="Leeds" /></label>
+            <label class="field"><span>Tone</span>
+              <select class="input" name="tone"><option value="friendly">Friendly and local</option><option value="professional">Professional and reassuring</option><option value="premium">Premium and refined</option><option value="direct">Direct and no-nonsense</option></select>
+            </label>
+            <label class="field wide"><span>Main services (comma separated)</span><input class="input" name="services" maxlength="400" placeholder="Emergency repairs, boiler servicing, bathroom fitting" /></label>
+            <label class="field wide"><span>Who are your customers?</span><input class="input" name="audience" maxlength="200" placeholder="Homeowners and landlords across West Yorkshire" /></label>
+            <label class="field"><span>Phone</span><input class="input" name="phone" maxlength="40" placeholder="0113 496 0000" /></label>
+            <label class="field"><span>Email</span><input class="input" name="email" type="email" maxlength="120" placeholder="hello@yourbusiness.co.uk" /></label>
+            <label class="field wide"><span>Anything else Wren should know?</span><textarea class="input" name="extra" rows="3" maxlength="600" placeholder="Family business, Gas Safe registered, free quotes…"></textarea></label>
+          </div>
+          <p class="muted small">Wren only uses the facts you give here. Phone, email and town are inserted exactly as typed.</p>
+          <div class="row"><button class="btn" type="button" id="back">← Themes</button><button class="btn btn-primary" type="submit">Create my site →</button></div>
+        </form>
+
+        <section id="stepWork" hidden class="work">
+          <div class="spin"></div>
+          <h3>Wren is personalising your site</h3>
+          <p class="muted" id="workNote">Writing your texts and choosing photos. This takes about 20 to 60 seconds.</p>
+        </section>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast" role="status"></div>
   <script src="/_ili/dashboard.js" type="module"></script>
 </body>

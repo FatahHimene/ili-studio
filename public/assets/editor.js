@@ -43,6 +43,7 @@ async function init() {
   $('#undo').disabled = !d.undo;
   setStatus();
   loadFrame();
+  waitPersonalising();
 }
 
 // ---- saving edits --------------------------------------------------------------------
@@ -160,6 +161,15 @@ $('#imgAlt').onchange = (e) => setAttr(state.sel.id, 'alt', e.target.value.trim(
 $('#href').onchange = (e) => setAttr(state.sel.link.id, 'href', e.target.value.trim());
 $('#blank').onchange = (e) => setAttr(state.sel.link.id, 'target', e.target.checked ? '_blank' : '');
 $('#replaceImg').onclick = () => $('#imgFile').click();
+// a site still being personalised: wait, then reload
+async function waitPersonalising() {
+  while (state.meta?.personalising) {
+    $('#status').textContent = 'Wren is personalising…';
+    await new Promise((r) => setTimeout(r, 2000));
+    const d = await api(''); state.meta = { ...state.meta, ...d };
+    if (!d.personalising) { loadFrame(); setStatus(); }
+  }
+}
 $('#imgFile').onchange = async (e) => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f) return;
@@ -274,5 +284,56 @@ async function askWren() {
   finally { go.classList.remove('busy'); go.textContent = 'Ask Wren →'; $('#canvas').classList.remove('thinking'); }
 }
 fetch('/api/ai').then((r) => r.json()).then((d) => { Object.assign(ai, d); wrenUi(state.sel); }).catch(() => {});
+
+// ---- free photo library -----------------------------------------------------------------------
+const pm = { el: $('#pmodal'), target: null };
+function openPhotos() {
+  if (!state.sel || state.sel.kind !== 'image') return;
+  pm.target = state.sel.id;
+  pm.el.hidden = false;
+  const q = state.sel.alt || state.meta.brief?.trade || '';
+  $('#pQuery').value = q; $('#pChips').innerHTML = '';
+  if (q) searchPhotos(q); else $('#pGrid').innerHTML = '<p class="muted">Search the free photo library, or let Wren suggest.</p>';
+  $('#pQuery').focus();
+}
+async function searchPhotos(q) {
+  $('#pGrid').innerHTML = '<p class="muted">Searching…</p>';
+  try {
+    const r = await fetch(`/api/images/search?q=${encodeURIComponent(q)}`);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Search failed');
+    if (!d.results.length) { $('#pGrid').innerHTML = '<p class="muted">No photos found. Try other words, in English.</p>'; return; }
+    pm.results = d.results;
+    $('#pGrid').innerHTML = d.results.map((p, i) => `<button type="button" data-i="${i}" title="${esc(p.tags)}${p.author ? ' · ' + esc(p.author) : ''}"><img src="${esc(p.preview || p.thumb)}" alt="${esc(p.tags)}" loading="lazy"></button>`).join('');
+  } catch (e) { $('#pGrid').innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
+}
+$('#findPhoto').onclick = openPhotos;
+$('#pClose').onclick = () => { pm.el.hidden = true; };
+pm.el.addEventListener('click', (e) => { if (e.target === pm.el) pm.el.hidden = true; });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pm.el.hidden) pm.el.hidden = true; });
+$('#pForm').onsubmit = (e) => { e.preventDefault(); const q = $('#pQuery').value.trim(); if (q) searchPhotos(q); };
+$('#pChips').onclick = (e) => { const b = e.target.closest('button'); if (b) { $('#pQuery').value = b.textContent; searchPhotos(b.textContent); } };
+$('#pSuggest').onclick = async () => {
+  const b = $('#pSuggest'); b.disabled = true; b.textContent = '✦ Thinking…';
+  try {
+    const d = await api('/images/suggest', { method: 'POST', body: JSON.stringify({ page: state.page, id: pm.target }) });
+    $('#pChips').innerHTML = d.queries.map((q) => `<button type="button">${esc(q)}</button>`).join('');
+    if (d.queries[0]) { $('#pQuery').value = d.queries[0]; searchPhotos(d.queries[0]); }
+  } catch (e) { toast(esc(e.message), true); }
+  finally { b.disabled = false; b.textContent = '✦ Suggest'; }
+};
+$('#pGrid').onclick = async (e) => {
+  const b = e.target.closest('button[data-i]'); if (!b || b.classList.contains('busy')) return;
+  const photo = pm.results[Number(b.dataset.i)];
+  b.classList.add('busy');
+  try {
+    const d = await api('/images/library', { method: 'POST', body: JSON.stringify({ page: state.page, photo }) });
+    pm.el.hidden = true;
+    await setAttr(pm.target, 'src', d.src);
+    if (d.alt && !state.sel?.alt) await setAttr(pm.target, 'alt', d.alt);
+    toast('Photo added');
+  } catch (err) { toast(esc(err.message), true); }
+  finally { b.classList.remove('busy'); }
+};
 
 init().catch((e) => toast(esc(e.message), true));

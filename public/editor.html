@@ -81,7 +81,8 @@
           <h3>Image</h3>
           <img class="imgprev" id="imgPrev" alt="" />
           <div class="row">
-            <button class="btn btn-sm btn-dark" id="replaceImg">Replace image</button>
+            <button class="btn btn-sm btn-primary" id="findPhoto">Find a free photo</button>
+            <button class="btn btn-sm btn-dark" id="replaceImg">Upload my photo</button>
             <input type="file" id="imgFile" accept="image/png,image/jpeg,image/gif,image/webp,image/avif,image/svg+xml" hidden />
           </div>
           <label class="field"><span>Image address</span><input class="input" id="imgSrc" spellcheck="false" /></label>
@@ -141,6 +142,23 @@
       </section>
     </aside>
   </div>
+  <div class="pmodal" id="pmodal" hidden role="dialog" aria-modal="true" aria-labelledby="pTitle">
+    <div class="psheet">
+      <div class="phead">
+        <h2 id="pTitle">Find a free photo</h2>
+        <button class="btn btn-sm" id="pClose" type="button" aria-label="Close">✕</button>
+      </div>
+      <form class="psearch" id="pForm">
+        <input class="input" id="pQuery" placeholder="e.g. plumber fixing a sink" maxlength="100" autocomplete="off" />
+        <button class="btn btn-dark" type="submit">Search</button>
+        <button class="btn" type="button" id="pSuggest" title="Wren suggests searches for this image">✦ Suggest</button>
+      </form>
+      <div class="pchips" id="pChips"></div>
+      <div class="pgrid" id="pGrid"><p class="muted">Search the free photo library, or let Wren suggest.</p></div>
+      <p class="pcredit">Free photos from <a href="https://pixabay.com/" target="_blank" rel="noopener">Pixabay</a>. They are copied to your site and resized automatically.</p>
+    </div>
+  </div>
+
   <div class="toast" id="toast" role="status"></div>
   <script src="/_ili/editor.js" type="module"></script>
 </body>

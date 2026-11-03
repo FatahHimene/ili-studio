@@ -1,0 +1,11 @@
+{
+  "id": "test-trades",
+  "name": "Test · Trades",
+  "category": "Trades",
+  "description": "Technical test theme to check the theme → brief → personalisation pipeline. Not a final design.",
+  "version": "0.1.0",
+  "pages": ["index.html", "contact.html"],
+  "templates": [
+    { "id": "about", "name": "About us", "file": "templates/about.html", "path": "about.html" }
+  ]
+}

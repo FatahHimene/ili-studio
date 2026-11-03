@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Themes · ili studio admin</title>
+  <link rel="icon" href="/_ili/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/_ili/app.css" />
+  <link rel="stylesheet" href="/_ili/shell.css" />
+  <style>
+    .up { border: 1.5px dashed var(--ink); border-radius: var(--r2); background: var(--white); padding: 24px; display: grid; gap: 12px; align-content: center; min-height: 300px; }
+    .up.over { background: #F4FBDC; box-shadow: 6px 6px 0 var(--signal); }
+    .up h2 { font-size: 22px; }
+    .spec { font-size: 13px; color: var(--slate); }
+    .spec code { font-family: var(--mono); font-size: 12px; background: var(--paper); padding: 1px 4px; border-radius: 3px; }
+    .tcard .meta p { color: var(--slate); font-size: 14px; margin: 0; }
+    .tpls { display: flex; flex-wrap: wrap; gap: 6px; }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <a class="logo" href="/"><span class="i"><span class="cur"></span>ı</span>li studio<small>Admin</small></a>
+    <nav class="tabs"><a href="/">Sites</a><a href="/themes" aria-current="page">Themes</a></nav>
+    <form method="post" action="/logout"><button class="btn btn-sm" type="submit">Sign out</button></form>
+  </header>
+  <main>
+    <div class="head">
+      <div><span class="label">Admin · themes</span><h1>Designer-made themes</h1></div>
+      <p class="muted" style="max-width:48ch;margin:0">Themes your customers start from. Upload a theme as a ZIP with a <code>theme.json</code>. Wren personalises its marked slots from each customer's brief.</p>
+    </div>
+    <div class="grid" id="grid">
+      <form class="up" id="up">
+        <span class="label">Add or update a theme</span>
+        <h2>Drop a theme .zip here</h2>
+        <input type="file" id="file" accept=".zip" hidden />
+        <div><button class="btn btn-primary" type="button" id="choose">Choose a .zip →</button></div>
+        <p class="spec">The ZIP holds <code>theme.json</code> (<code>id</code>, <code>name</code>, <code>category</code>, <code>description</code>), <code>index.html</code>, other pages, <code>assets/</code>, optional <code>templates/*.html</code> and <code>preview.png</code>. Same <code>id</code> = update.</p>
+        <p class="muted" id="status" style="margin:0;font-size:13px" aria-live="polite"></p>
+      </form>
+    </div>
+  </main>
+  <div class="toast" id="toast" role="status"></div>
+  <script src="/_ili/themes.js" type="module"></script>
+</body>
+</html>

@@ -5,7 +5,7 @@ const fileInput = $('#file');
 
 function toast(msg, err = false) {
   const t = $('#toast'); t.innerHTML = msg; t.classList.toggle('err', err); t.classList.add('show');
-  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 4000);
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 4500);
 }
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const ago = (iso) => {
@@ -15,25 +15,28 @@ const ago = (iso) => {
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 };
 
+// ---- sites list -------------------------------------------------------------------------
 async function load() {
-  const sites = await (await fetch('/api/sites')).json();
+  const r = await fetch('/api/sites'); if (r.status === 401) { location.href = '/login'; return; }
+  const sites = await r.json();
   grid.querySelectorAll('.card').forEach((c) => c.remove());
-  if (!sites.length) return;
+  $('#empty').hidden = sites.length > 0;
   for (const s of sites) {
     const status = !s.publishedAt ? '<span class="tag">Draft</span>' : s.dirty ? '<span class="tag tag-warn">Unpublished changes</span>' : '<span class="tag tag-live">Live</span>';
+    const origin = s.theme ? `<span>· theme ${esc(s.theme.id)}</span>` : '<span>· imported</span>';
     const el = document.createElement('article');
     el.className = 'card';
     el.innerHTML = `
       <a class="thumb" href="/editor/${s.id}" aria-label="Edit ${esc(s.name)}"><iframe loading="lazy" sandbox="allow-scripts" tabindex="-1" title=""></iframe></a>
       <div class="meta"><h3>${esc(s.name)}</h3>
-        <div class="facts">${status}<span>${s.pages.length} page${s.pages.length > 1 ? 's' : ''}</span><span>· edited ${ago(s.updatedAt)}</span></div></div>
+        <div class="facts">${status}<span>${s.pages.length} page${s.pages.length > 1 ? 's' : ''}</span>${origin}<span>· edited ${ago(s.updatedAt)}</span></div></div>
       <div class="acts">
         <a class="btn btn-sm btn-dark" href="/editor/${s.id}">Edit</a>
         ${s.publishedAt ? `<a class="btn btn-sm" href="/s/${esc(s.slug)}/" target="_blank" rel="noopener">View live ↗</a>` : ''}
         <button class="btn btn-sm btn-danger del" data-id="${s.id}" data-name="${esc(s.name)}">Delete</button>
       </div>`;
     grid.appendChild(el);
-    fetch(`/api/sites/${s.id}`).then((r) => r.json()).then((d) => { el.querySelector('iframe').src = `/frame/${s.id}/${d.frameToken}/index.html?ili-thumb=1`; });
+    fetch(`/api/sites/${s.id}`).then((r2) => r2.json()).then((d) => { el.querySelector('iframe').src = `/frame/${s.id}/${d.frameToken}/index.html?ili-thumb=1`; });
   }
 }
 
@@ -45,30 +48,88 @@ grid.addEventListener('click', async (e) => {
   if (r.ok) { toast(`Deleted ${esc(b.dataset.name)}`); load(); } else toast('Could not delete this site', true);
 });
 
+// ---- import ---------------------------------------------------------------------------------
 function upload(file) {
   if (!file) return;
   if (!/\.(zip|html?)$/i.test(file.name)) return toast('Please choose a .zip or .html file', true);
-  const fd = new FormData(); fd.append('file', file); fd.append('name', drop.elements.name.value);
+  const fd = new FormData(); fd.append('file', file);
   const xhr = new XMLHttpRequest();
   const prog = $('#prog'); const bar = prog.querySelector('i'); const status = $('#status');
   prog.hidden = false; bar.style.width = '0%'; status.textContent = `Uploading ${file.name}…`;
   xhr.upload.onprogress = (e) => { if (e.lengthComputable) bar.style.width = `${Math.round((e.loaded / e.total) * 100)}%`; };
-  xhr.upload.onload = () => { status.textContent = 'Importing and preparing your site…'; };
+  xhr.upload.onload = () => { status.textContent = 'Preparing your site…'; };
   xhr.onload = () => {
     prog.hidden = true;
     let d = {}; try { d = JSON.parse(xhr.responseText); } catch { /* */ }
     if (xhr.status >= 400) { status.textContent = ''; return toast(esc(d.error || 'Import failed'), true); }
-    status.textContent = '';
     location.href = `/editor/${d.id}`;
   };
   xhr.onerror = () => { prog.hidden = true; status.textContent = ''; toast('Upload failed. Check your connection.', true); };
   xhr.open('POST', '/api/sites'); xhr.send(fd);
 }
-
 $('#choose').addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', () => upload(fileInput.files[0]));
 ['dragenter', 'dragover'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('over'); }));
 ['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
 drop.addEventListener('drop', (e) => upload(e.dataTransfer.files[0]));
 drop.addEventListener('submit', (e) => e.preventDefault());
+
+// ---- new site from a theme -------------------------------------------------------------------
+const modal = $('#modal');
+let themes = []; let chosen = null; let cat = 'All';
+function step(name) {
+  $('#stepTheme').hidden = name !== 'theme'; $('#stepBrief').hidden = name !== 'brief'; $('#stepWork').hidden = name !== 'work';
+  $('#mTitle').textContent = { theme: 'Choose a theme', brief: 'Tell Wren about your business', work: 'Creating your site' }[name];
+  $('#mSteps').innerHTML = ['1 Theme', '2 Your business', '3 Personalise'].map((s, i) => (i === ['theme', 'brief', 'work'].indexOf(name) ? `<b>${s}</b>` : s)).join(' · ');
+  $('#mClose').hidden = name === 'work';
+}
+function renderThemes() {
+  const cats = ['All', ...new Set(themes.map((t) => t.category))];
+  $('#cats').innerHTML = cats.map((c) => `<button type="button" aria-pressed="${c === cat}">${esc(c)}</button>`).join('');
+  const list = themes.filter((t) => cat === 'All' || t.category === cat);
+  $('#tgrid').innerHTML = list.length ? list.map((t) => `
+    <article class="tpick">
+      <a class="thumb" href="/theme-files/${t.id}/index.html" target="_blank" rel="noopener" aria-label="Preview ${esc(t.name)}">${t.preview ? `<img src="/theme-files/${t.id}/${esc(t.preview)}" alt="">` : `<iframe loading="lazy" sandbox="allow-scripts" tabindex="-1" title="" src="/theme-files/${t.id}/index.html"></iframe>`}</a>
+      <div class="meta"><h3>${esc(t.name)}</h3><div class="facts"><span class="tag">${esc(t.category)}</span><span>${t.pages.length} pages</span></div><p>${esc(t.description)}</p></div>
+      <div class="acts"><a class="btn btn-sm" href="/theme-files/${t.id}/index.html" target="_blank" rel="noopener">Preview ↗</a><button class="btn btn-sm btn-primary pick" data-id="${esc(t.id)}" type="button">Use this theme →</button></div>
+    </article>`).join('') : '<p class="muted">No themes yet. Add one in Themes.</p>';
+}
+$('#cats').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { cat = b.textContent; renderThemes(); } });
+$('#tgrid').addEventListener('click', (e) => {
+  const b = e.target.closest('.pick'); if (!b) return;
+  chosen = themes.find((t) => t.id === b.dataset.id);
+  $('#chosen').innerHTML = `<span class="tag tag-live">Theme</span><b>${esc(chosen.name)}</b><span class="muted">${esc(chosen.category)}</span>`;
+  step('brief'); $('#stepBrief').elements.business.focus();
+});
+$('#back').onclick = () => step('theme');
+$('#fromTheme').onclick = async () => {
+  modal.hidden = false; step('theme');
+  const r = await fetch('/api/themes'); themes = await r.json(); renderThemes();
+};
+const close = () => { modal.hidden = true; };
+$('#mClose').onclick = close;
+modal.addEventListener('click', (e) => { if (e.target === modal && $('#stepWork').hidden) close(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.hidden && $('#stepWork').hidden) close(); });
+
+$('#stepBrief').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const brief = Object.fromEntries(new FormData(e.target).entries());
+  step('work');
+  try {
+    const r = await fetch('/api/sites/from-theme', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme: chosen.id, brief }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Could not create the site');
+    const t0 = Date.now();
+    for (;;) {
+      await new Promise((res) => setTimeout(res, 1500));
+      const j = await (await fetch(`/api/jobs/${d.job}`)).json();
+      if (j.status === 'done') break;
+      if (j.status === 'error') { toast(esc(j.error), true); break; }
+      $('#workNote').textContent = `Writing your texts and choosing photos… ${Math.round((Date.now() - t0) / 1000)}s`;
+      if (Date.now() - t0 > 240000) break;
+    }
+    location.href = `/editor/${d.id}`;
+  } catch (err) { toast(esc(err.message), true); step('brief'); }
+});
+
 load();

@@ -8,8 +8,12 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import * as store from './store.js';
 import { importUpload, ImportError } from './importer.js';
+import { tag } from './html.js';
 import { applyOps, injectEditor, strip, title, elementForAi, STYLE_OK } from './html.js';
-import { wren, aiStatus, AiError, ping } from './ai.js';
+import { wren, aiStatus, AiError, ping, askJson } from './ai.js';
+import { searchPhotos, importPhoto, saveImage, bankStatus, ImageError } from './images.js';
+import { listThemes, getTheme, publicTheme, installTheme, removeTheme, copyThemeTo } from './themes.js';
+import { personalise, cleanBrief } from './personalise.js';
 import { requireAuth, login, logout, isAuthed, frameToken, checkFrameToken } from './auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -231,20 +235,131 @@ app.post('/api/sites/:id/undo', requireAuth, wrap(async (req, res) => {
   res.json({ ok: true, undo: await store.historyCount(meta.id, page) });
 }));
 
-/** Upload an image into the site; returns a path relative to the page. */
+const relFromPage = (page, file) => path.posix.relative(path.posix.dirname(page) === '.' ? '' : path.posix.dirname(page), file);
+
+/** Upload an image into the site (resized + compressed); returns a path relative to the page. */
 app.post('/api/sites/:id/images', requireAuth, imageUpload.single('image'), wrap(async (req, res) => {
   const meta = await store.readMeta(req.params.id);
   if (!req.file) return res.status(400).json({ error: 'Choose a PNG, JPG, GIF, WebP, AVIF or SVG image (max 10 MB)' });
   const page = String(req.body.page || 'index.html');
-  const extMap = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/avif': 'avif', 'image/svg+xml': 'svg' };
-  const name = `${Date.now().toString(36)}-${store.newId().slice(0, 4)}.${extMap[req.file.mimetype]}`;
-  const dir = path.join(store.draftDir(meta.id), 'ili-uploads');
-  await fs.mkdir(dir, { recursive: true });
-  await fs.copyFile(req.file.path, path.join(dir, name));
-  await fs.rm(req.file.path, { force: true });
-  const rel = path.posix.relative(path.posix.dirname(page) === '.' ? '' : path.posix.dirname(page), 'ili-uploads/' + name);
-  res.json({ src: rel });
+  try {
+    const saved = await saveImage(await fs.readFile(req.file.path), path.join(store.draftDir(meta.id), 'ili-uploads'), { keepFormat: true });
+    res.json({ src: relFromPage(page, 'ili-uploads/' + saved.name) });
+  } catch (e) {
+    if (e instanceof ImageError) return res.status(400).json({ error: e.message });
+    throw e;
+  } finally { fs.rm(req.file.path, { force: true }); }
 }));
+
+// ---- photo library (Pixabay) ---------------------------------------------------------------
+app.get('/api/images/status', requireAuth, (req, res) => res.json(bankStatus()));
+app.get('/api/images/search', requireAuth, wrap(async (req, res) => {
+  try {
+    const orientation = ['horizontal', 'vertical', 'all'].includes(req.query.orientation) ? req.query.orientation : 'all';
+    res.json({ results: await searchPhotos(String(req.query.q || ''), { orientation }) });
+  } catch (e) { if (e instanceof ImageError) return res.status(400).json({ error: e.message }); throw e; }
+}));
+
+/** Put a library photo into the site. Body: { page, photo: {id, full, preview, tags, author, page} } */
+app.post('/api/sites/:id/images/library', requireAuth, wrap(async (req, res) => {
+  const meta = await store.readMeta(req.params.id);
+  const page = String(req.body.page || 'index.html');
+  const ph = req.body.photo || {};
+  try {
+    const saved = await importPhoto({ full: String(ph.full || ''), preview: String(ph.preview || '') }, path.join(store.draftDir(meta.id), 'ili-uploads'));
+    meta.imageCredits = [...(meta.imageCredits || []), { file: 'ili-uploads/' + saved.name, source: 'pixabay', author: String(ph.author || '').slice(0, 80), page: String(ph.page || '').slice(0, 200) }].slice(-500);
+    await store.writeMeta(meta.id, meta);
+    res.json({ src: relFromPage(page, 'ili-uploads/' + saved.name), alt: String(ph.tags || '').split(',')[0].trim() });
+  } catch (e) { if (e instanceof ImageError) return res.status(400).json({ error: e.message }); throw e; }
+}));
+
+/** Wren suggests a photo search for the selected image, from the page and the brief. Body: { page, id } */
+app.post('/api/sites/:id/images/suggest', requireAuth, wrap(async (req, res) => {
+  const meta = await store.readMeta(req.params.id);
+  const page = String(req.body.page || 'index.html');
+  if (!meta.pages.includes(page)) return res.status(404).json({ error: 'Page not found' });
+  const html = await fs.readFile(store.safeJoin(store.draftDir(meta.id), page), 'utf8');
+  let el; try { el = elementForAi(html, String(req.body.id || '')); } catch (e) { return res.status(400).json({ error: e.message }); }
+  try {
+    const { data } = await askJson({
+      system: 'You choose stock photos for small business websites. Suggest search queries for a free photo library.',
+      user: `Business brief: ${JSON.stringify(meta.brief || {})}\nPage text: ${el.context.slice(0, 1200)}\nThe image to replace: ${el.html.slice(0, 400)}\nReturn {"queries": ["2-4 English words", "...", "..."]} with 3 different concrete queries.`,
+      mock: () => ({ queries: [`${meta.brief?.trade || 'business'} at work`, 'happy customer', 'tools'] }),
+    });
+    const queries = (Array.isArray(data.queries) ? data.queries : []).map((q) => String(q).slice(0, 60)).filter(Boolean).slice(0, 3);
+    res.json({ queries });
+  } catch (e) { if (e instanceof AiError) return res.status(502).json({ error: e.message }); throw e; }
+}));
+
+// ---- themes ------------------------------------------------------------------------------------
+app.get('/themes', requireAuth, (req, res) => send(res, 'themes.html'));
+app.get('/api/themes', requireAuth, wrap(async (req, res) => res.json((await listThemes()).map(publicTheme))));
+app.post('/api/themes', requireAuth, upload.single('file'), wrap(async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Choose a theme .zip file' });
+  try { res.json(publicTheme(await installTheme(req.file.path, req.file.originalname))); }
+  catch (e) { if (e instanceof ImportError) return res.status(400).json({ error: e.message }); throw e; }
+  finally { fs.rm(req.file.path, { force: true }); }
+}));
+app.delete('/api/themes/:id', requireAuth, wrap(async (req, res) => {
+  try { await removeTheme(req.params.id); res.json({ ok: true }); }
+  catch (e) { if (e instanceof ImportError) return res.status(400).json({ error: e.message }); throw e; }
+}));
+// theme files for previews (public: themes are not secret), sandboxed like site content
+app.get('/theme-files/:id/{*path}', wrap(async (req, res) => {
+  const t = await getTheme(req.params.id);
+  if (!t) return res.status(404).send('Not found');
+  let file = store.safeJoin(t.dir, (req.params.path || []).join('/') || 'index.html');
+  if (fss.existsSync(file) && fss.statSync(file).isDirectory()) file = path.join(file, 'index.html');
+  if (!fss.existsSync(file) || path.basename(file) === 'theme.json') return res.status(404).send('Not found');
+  res.setHeader('Content-Security-Policy', SANDBOX); corsOk(res); res.setHeader('Cache-Control', 'public, max-age=300');
+  res.sendFile(file);
+}));
+
+/** Create a site from a theme and personalise it from the brief (background job). Body: { theme, brief } */
+app.post('/api/sites/from-theme', requireAuth, wrap(async (req, res) => {
+  const theme = await getTheme(String(req.body.theme || ''));
+  if (!theme) return res.status(404).json({ error: 'Theme not found' });
+  const brief = cleanBrief(req.body.brief);
+  if (!brief.business || !brief.trade) return res.status(400).json({ error: 'Business name and trade are required' });
+  const id = store.newId();
+  await fs.mkdir(store.draftDir(id), { recursive: true });
+  await copyThemeTo(theme, store.draftDir(id));
+  let slug = store.slugify(brief.business);
+  for (let n = 2; await store.slugTaken(slug); n++) slug = `${store.slugify(brief.business)}-${n}`;
+  const now = new Date().toISOString();
+  const meta = { id, name: brief.business, slug, pages: theme.pages, theme: { id: theme.id, version: theme.version }, brief, createdAt: now, updatedAt: now, publishedAt: null, source: 'theme:' + theme.id, personalising: true };
+  await store.writeMeta(id, meta);
+
+  const jobId = store.newId();
+  const job = { status: 'working', site: id, at: Date.now() };
+  jobs.set(jobId, job);
+  res.status(202).json({ id, job: jobId });
+
+  (async () => {
+    try {
+      const out = await personalise(store.draftDir(id), theme.pages, brief, { log: (m) => console.log(`[theme] ${id} ${m}`) });
+      const m = await store.readMeta(id);
+      m.personalising = false; m.updatedAt = new Date().toISOString();
+      m.imageCredits = out.credits;
+      m.aiUsage = { calls: 1, input: out.usage?.input || 0, output: out.usage?.output || 0 };
+      await store.writeMeta(id, m);
+      Object.assign(job, { status: 'done', note: `${out.images} photos added` });
+    } catch (e) {
+      console.error('[theme] personalise failed:', e.message);
+      // keep the site: the owner can still edit the theme by hand
+      const m = await store.readMeta(id); m.personalising = false;
+      for (const p of m.pages) { const f = store.safeJoin(store.draftDir(id), p); await fs.writeFile(f, tag(await fs.readFile(f, 'utf8'))); }
+      await store.writeMeta(id, m);
+      Object.assign(job, { status: 'error', error: e instanceof AiError ? e.message : 'Personalisation failed, the theme is ready to edit by hand.' });
+    }
+  })();
+}));
+
+app.get('/api/jobs/:job', requireAuth, (req, res) => {
+  const job = jobs.get(req.params.job);
+  if (!job) return res.status(404).json({ error: 'Unknown task' });
+  res.json({ status: job.status, error: job.error, note: job.note, site: job.site });
+});
 
 app.post('/api/sites/:id/publish', requireAuth, wrap(async (req, res) => {
   const meta = await store.readMeta(req.params.id);

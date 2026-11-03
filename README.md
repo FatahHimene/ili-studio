@@ -13,7 +13,44 @@ Importer un site (ZIP ou HTML fait avec ChatGPT, Claude, Lovable…), cliquer su
 - **Wren (IA)** : sélectionner un élément et demander une modification (réécrire, raccourcir, moderniser une section…). Chaque modification peut être annulée.
 - **Style** : couleurs, taille, graisse, alignement, arrondis, espace intérieur.
 
-Pas encore : comptes clients, crédits, domaines personnalisés, paiement.
+- **Thèmes** : créer un site à partir d'un thème conçu par un designer ; Wren remplit les textes et la banque d'images ajoute les photos, à partir du brief du client.
+- **Admin des thèmes** (`/themes`) : ajouter, mettre à jour ou supprimer un thème en déposant un ZIP.
+- **Banque de photos gratuite** (Pixabay) dans l'éditeur, avec suggestions de recherche par Wren ; photos et images téléversées redimensionnées et compressées en WebP.
+
+Pas encore : comptes clients, crédits, domaines personnalisés, paiement, ajout de pages/sections, styles globaux du site.
+
+## Photos (Pixabay)
+
+Créer une clé gratuite sur https://pixabay.com/api/docs/ (connecté, la clé apparaît dans la page), puis dans CapRover :
+
+```
+PIXABAY_API_KEY=votre-cle
+```
+
+## Format d'un thème
+
+Un thème est un dossier (ou un ZIP de ce dossier) :
+
+```
+theme.json        {"id": "artisan-bold", "name": "…", "category": "Trades", "description": "…", "version": "1.0.0",
+                   "pages": ["index.html", "contact.html"],
+                   "templates": [{"id": "about", "name": "About us", "file": "templates/about.html", "path": "about.html"}]}
+index.html …      les pages du thème
+assets/           CSS, polices, images, scripts
+templates/*.html  modèles de pages ajoutables plus tard (facultatif)
+preview.png       capture pour la galerie (facultatif)
+```
+
+Dans le HTML, les zones personnalisables sont des **slots** :
+
+| Attribut | Rôle |
+|---|---|
+| `data-ili-slot="hero.title"` | texte écrit par Wren (`data-ili-hint`, `data-ili-max` l'aident) |
+| `data-ili-type="business\|phone\|email\|town\|address"` | fait inséré tel quel depuis le brief, jamais inventé |
+| `data-ili-optional` | retiré si le fait est absent (ex. pas d'e-mail) |
+| `<img data-ili-slot="hero.image" data-ili-query="electrician at work" data-ili-orientation="horizontal">` | photo choisie dans la banque |
+
+Les thèmes intégrés sont dans `themes/` du dépôt ; ceux ajoutés par l'admin sont stockés dans `/data/themes` (un thème ajouté avec le même `id` remplace l'intégré).
 
 ## Activer Wren
 
