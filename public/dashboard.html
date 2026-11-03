@@ -9,11 +9,13 @@
   <link rel="stylesheet" href="/_ili/app.css" />
   <link rel="stylesheet" href="/_ili/shell.css" />
   <link rel="stylesheet" href="/_ili/dashboard.css" />
+  <link rel="stylesheet" href="/_ili/offers.css" />
 </head>
 <body>
   <header class="top">
-    <a class="logo" href="/"><span class="i"><span class="cur"></span>ı</span>li studio<small>Prototype</small></a>
-    <nav class="tabs"><a href="/" aria-current="page">Sites</a><a href="/themes">Themes</a></nav>
+    <a class="logo" href="/"><span class="i"><span class="cur"></span>ı</span>li studio</a>
+    <nav class="tabs"><a href="/" aria-current="page">Sites</a><a href="/themes" id="themesTab" hidden>Themes</a></nav>
+    <div class="acct" id="acct"></div>
     <form method="post" action="/logout"><button class="btn btn-sm" type="submit">Sign out</button></form>
   </header>
   <main>

@@ -15,10 +15,24 @@ const ago = (iso) => {
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 };
 
+// ---- account ---------------------------------------------------------------------------
+const me = {};
+let sites = [];
+const liveUrl = (s) => (s.subdomain && me.freeDomain && !/^(localhost|\d+\.\d+\.\d+\.\d+)/.test(location.hostname) && !location.hostname.endsWith('nip.io') ? `https://${s.subdomain}.${me.freeDomain}/` : `/s/${s.subdomain || s.slug}/`);
+async function loadMe() {
+  const [u, p] = await Promise.all([fetch('/api/me').then((r) => r.json()), fetch('/api/plans').then((r) => r.json())]);
+  Object.assign(me, u, { freeDomain: p.freeDomain });
+  $('#themesTab').hidden = u.role !== 'admin';
+  $('#acct').innerHTML = u.role === 'admin' ? '<span class="tag">Admin</span>'
+    : `<span class="who">${esc(u.email)}</span><span class="tag">${esc(u.planInfo.name)}</span><span class="credits" title="AI credits left">✦ ${u.credits} credits</span>${u.plan === 'free' ? '<button class="btn btn-sm btn-primary" id="upBtn" type="button">See plans</button>' : ''}`;
+  const up = document.getElementById('upBtn');
+  if (up) up.onclick = async () => { const { offersModal } = await import('/_ili/offers.js'); offersModal({ title: 'Choose a plan', intro: 'More pages, more AI credits and your own domain. Your site and everything you made are kept.', current: u.plan }); };
+}
+
 // ---- sites list -------------------------------------------------------------------------
 async function load() {
   const r = await fetch('/api/sites'); if (r.status === 401) { location.href = '/login'; return; }
-  const sites = await r.json();
+  sites = await r.json();
   grid.querySelectorAll('.card').forEach((c) => c.remove());
   $('#empty').hidden = sites.length > 0;
   for (const s of sites) {
@@ -29,10 +43,11 @@ async function load() {
     el.innerHTML = `
       <a class="thumb" href="/editor/${s.id}" aria-label="Edit ${esc(s.name)}"><iframe loading="lazy" sandbox="allow-scripts" tabindex="-1" title="" scrolling="no"></iframe></a>
       <div class="meta"><h3>${esc(s.name)}</h3>
-        <div class="facts">${status}<span>${s.pages.length} page${s.pages.length > 1 ? 's' : ''}</span>${origin}<span>· edited ${ago(s.updatedAt)}</span></div></div>
+        <div class="facts">${status}<span>${s.pages.length} page${s.pages.length > 1 ? 's' : ''}</span>${origin}<span>· edited ${ago(s.updatedAt)}</span>${s.ownerEmail !== undefined ? `<span>· ${esc(s.ownerEmail || 'you')}</span>` : ''}</div>
+        ${s.publishedAt && s.subdomain ? `<div class="facts"><span class="mono">${esc(s.subdomain)}.${esc(me.freeDomain || '')}</span></div>` : ''}</div>
       <div class="acts">
         <a class="btn btn-sm btn-dark" href="/editor/${s.id}">Edit</a>
-        ${s.publishedAt ? `<a class="btn btn-sm" href="/s/${esc(s.slug)}/" target="_blank" rel="noopener">View live ↗</a>` : ''}
+        ${s.publishedAt ? `<a class="btn btn-sm" href="${esc(liveUrl(s))}" target="_blank" rel="noopener">View live ↗</a>` : ''}
         <button class="btn btn-sm btn-danger del" data-id="${s.id}" data-name="${esc(s.name)}">Delete</button>
       </div>`;
     grid.appendChild(el);
@@ -109,6 +124,7 @@ $('#stepBrief').addEventListener('change', (e) => {
   if (e.target.name === 'writeMode') { const ta = $('#stepBrief').elements.presentation; ta.hidden = e.target.value !== 'own'; if (!ta.hidden) ta.focus(); }
 });
 $('#fromTheme').onclick = async () => {
+  if (me.role !== 'admin' && sites.length >= (me.planInfo?.sites || 3)) return toast(`Your ${esc(me.planInfo.name)} plan allows ${me.planInfo.sites} sites. Delete one to start another.`, true);
   modal.hidden = false; step('theme');
   const r = await fetch('/api/themes'); themes = await r.json(); renderThemes();
 };
@@ -150,4 +166,6 @@ function fitThumbs() {
 }
 new ResizeObserver(fitThumbs).observe(document.body);
 new MutationObserver(fitThumbs).observe(document.body, { childList: true, subtree: true });
-load();
+await loadMe().catch(() => {});
+await load();
+if (new URLSearchParams(location.search).get('new') === '1') { history.replaceState(null, '', '/'); if (!sites.length) $('#fromTheme').click(); }

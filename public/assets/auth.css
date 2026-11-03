@@ -1,0 +1,6 @@
+body { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+.card { width: min(420px, 100%); background: var(--white); border: 1px solid var(--ink); border-radius: var(--r2); padding: 32px; box-shadow: 8px 8px 0 var(--signal); display: grid; gap: 18px; }
+.card h1 { font-size: 30px; margin-top: 10px; }
+.err { color: var(--danger); font-size: 14px; margin: 0; }
+.alt { margin: 0; font-size: 14px; color: var(--slate); text-align: center; }
+.alt a { color: var(--ink); font-weight: 600; }

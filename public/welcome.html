@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>How would you like to start? · ili studio</title>
+  <link rel="icon" href="/_ili/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/_ili/app.css" />
+  <link rel="stylesheet" href="/_ili/shell.css" />
+  <link rel="stylesheet" href="/_ili/offers.css" />
+  <style>
+    .intro { text-align: center; max-width: 680px; margin: 0 auto 36px; display: grid; gap: 12px; justify-items: center; }
+    .intro h1 { font-size: 42px; }
+    .intro p { margin: 0; color: var(--slate); font-size: 17px; }
+    .reassure { text-align: center; color: var(--slate); font-size: 14px; margin-top: 24px; }
+    .thanks { max-width: 620px; margin: 32px auto 0; background: var(--white); border: 1px solid var(--ink); border-radius: var(--r2); padding: 24px; box-shadow: 6px 6px 0 var(--signal); display: grid; gap: 12px; }
+    .thanks h2 { font-size: 22px; }
+    .thanks p { margin: 0; }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <a class="logo" href="/"><span class="i"><span class="cur"></span>ı</span>li studio</a>
+    <form method="post" action="/logout"><button class="btn btn-sm" type="submit">Sign out</button></form>
+  </header>
+  <main>
+    <div class="intro">
+      <span class="label" id="who">Welcome</span>
+      <h1>How would you like to start?</h1>
+      <p>Discover ili studio for free, or pick a plan for more pages, more AI and your own domain. You can change at any time.</p>
+    </div>
+    <div id="offers"></div>
+    <p class="reassure">Free stays free: no card needed, no time limit. Every theme is available on every plan.</p>
+    <div class="thanks" id="thanks" hidden>
+      <h2>Great choice!</h2>
+      <p>Card payment opens very soon. We have saved your choice and will email you as soon as you can switch.</p>
+      <p class="muted">Meanwhile, you can start your site right away. Everything you build is kept.</p>
+      <a class="btn btn-primary" href="/?new=1">Start my site →</a>
+    </div>
+  </main>
+  <script type="module">
+    import { renderOffers, choosePlan } from '/_ili/offers.js';
+    const me = await fetch('/api/me').then((r) => (r.status === 401 ? (location.href = '/login') : r.json()));
+    if (me.name) document.getElementById('who').textContent = `Welcome, ${me.name}`;
+    renderOffers(document.getElementById('offers'), {
+      freeLabel: 'Discover for free', paidLabel: null,
+      onPick: async (plan, btn) => {
+        btn.disabled = true;
+        await choosePlan(plan);
+        if (plan === 'free') { location.href = '/?new=1'; return; }
+        document.getElementById('thanks').hidden = false;
+        document.getElementById('thanks').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      },
+    });
+  </script>
+</body>
+</html>

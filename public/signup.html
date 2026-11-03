@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Create your account · ili studio</title>
+  <link rel="icon" href="/_ili/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/_ili/app.css" />
+  <link rel="stylesheet" href="/_ili/auth.css" />
+</head>
+<body class="grid-bg">
+  <form class="card" method="post" action="/signup">
+    <span class="logo"><span class="i"><span class="cur"></span>ı</span>li studio</span>
+    <div><span class="label">Free · no card needed</span><h1>Create your website</h1></div>
+    <p class="err" id="err" hidden></p>
+    <label class="field"><span>Your name</span><input class="input" type="text" name="name" autocomplete="name" maxlength="80" /></label>
+    <label class="field"><span>Email</span><input class="input" type="email" name="email" id="email" autocomplete="email" required autofocus /></label>
+    <label class="field"><span>Password</span><input class="input" type="password" name="password" autocomplete="new-password" minlength="8" required /><small class="muted">At least 8 characters.</small></label>
+    <button class="btn btn-primary" type="submit">Create my account →</button>
+    <p class="alt">Already have an account? <a href="/login">Sign in</a></p>
+  </form>
+  <script>
+    const q = new URLSearchParams(location.search);
+    if (q.get('error')) { const el = document.getElementById('err'); el.textContent = q.get('error'); el.hidden = false; }
+    if (q.get('email')) document.getElementById('email').value = q.get('email');
+  </script>
+</body>
+</html>

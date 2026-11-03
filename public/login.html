@@ -7,24 +7,22 @@
   <title>Sign in · ili studio</title>
   <link rel="icon" href="/_ili/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/_ili/app.css" />
-  <style>
-    body { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
-    .card { width: min(400px, 100%); background: var(--white); border: 1px solid var(--ink); border-radius: var(--r2); padding: 32px; box-shadow: 8px 8px 0 var(--signal); display: grid; gap: 20px; }
-    h1 { font-size: 30px; }
-    .err { color: var(--danger); font-size: 14px; }
-  </style>
+  <link rel="stylesheet" href="/_ili/auth.css" />
 </head>
 <body class="grid-bg">
   <form class="card" method="post" action="/login">
     <span class="logo"><span class="i"><span class="cur"></span>ı</span>li studio</span>
-    <div><span class="label">Prototype</span><h1 style="margin-top:10px">Sign in</h1></div>
+    <div><span class="label">Welcome back</span><h1>Sign in</h1></div>
     <p class="err" id="err" hidden></p>
-    <label class="field"><span>Password</span><input class="input" type="password" name="password" autocomplete="current-password" required autofocus /></label>
+    <label class="field"><span>Email</span><input class="input" type="text" name="email" id="email" autocomplete="username" inputmode="email" required autofocus /></label>
+    <label class="field"><span>Password</span><input class="input" type="password" name="password" autocomplete="current-password" required /></label>
     <button class="btn btn-primary" type="submit">Sign in →</button>
+    <p class="alt">New to ili studio? <a href="/signup">Create your free account</a></p>
   </form>
   <script>
-    const e = new URLSearchParams(location.search).get('error');
-    if (e) { const el = document.getElementById('err'); el.textContent = e; el.hidden = false; }
+    const q = new URLSearchParams(location.search);
+    if (q.get('error')) { const el = document.getElementById('err'); el.textContent = q.get('error'); el.hidden = false; }
+    if (q.get('email')) document.getElementById('email').value = q.get('email');
   </script>
 </body>
 </html>

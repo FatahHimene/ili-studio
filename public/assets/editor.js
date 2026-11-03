@@ -19,7 +19,7 @@ function setStatus() {
   else if (m.dirty) { s.textContent = 'Saved · unpublished changes'; s.className = 'status dirty'; }
   else { s.textContent = 'Saved · live'; s.className = 'status ok'; }
   const live = $('#live');
-  live.hidden = !m.publishedAt; live.href = `/s/${m.slug}/`;
+  live.hidden = !m.publishedAt; live.href = liveUrl(m.subdomain || m.slug);
 }
 
 async function api(path, opts = {}) {
@@ -27,13 +27,39 @@ async function api(path, opts = {}) {
   let d = {}; try { d = await r.json(); } catch { /* */ }
   if (r.status === 502 || r.status === 504) { if (!d.error) throw new Error('The server took too long to answer. Try again.'); }
   if (r.status === 401) { location.href = '/login'; throw new Error('Signed out'); }
-  if (!r.ok) throw new Error(d.error || 'Something went wrong');
+  if (!r.ok) { const err = new Error(d.error || 'Something went wrong'); err.code = d.code; err.data = d; throw err; }
   return d;
 }
 
+// ---- account & plan --------------------------------------------------------------------------
+const me = { credits: null };
+const testHost = /^(localhost|\d+\.\d+\.\d+\.\d+)/.test(location.hostname) || location.hostname.endsWith('nip.io');
+const liveUrl = (sub) => (!testHost && me.freeDomain ? `https://${sub}.${me.freeDomain}/` : `/s/${sub}/`);
+async function loadMe() {
+  const [u, p] = await Promise.all([fetch('/api/me').then((r) => r.json()), fetch('/api/plans').then((r) => r.json())]);
+  Object.assign(me, u, { freeDomain: p.freeDomain });
+  showCredits();
+}
+function showCredits() {
+  const el = $('#wrenCredits'); if (!el) return;
+  if (me.role === 'admin' || me.credits == null) { el.textContent = ''; return; }
+  el.innerHTML = `✦ ${me.credits} AI credit${me.credits === 1 ? '' : 's'} left${me.credits < 10 ? ' · <a href="#" id="moreCredits">Get more</a>' : ''}`;
+  const more = document.getElementById('moreCredits'); if (more) more.onclick = (e) => { e.preventDefault(); creditsOut(false); };
+}
+async function creditsOut(empty = true) {
+  const { offersModal } = await import('/_ili/offers.js');
+  offersModal({
+    title: empty ? 'You have used your AI credits' : 'Get more AI credits',
+    intro: empty ? 'You can keep editing your site by hand: texts, photos, colours, sizes and pages all stay editable. Or choose a plan to get Wren back with fresh credits every month.'
+      : 'Each plan comes with fresh AI credits every month, more pages and your own domain on Plus and Pro.',
+    actions: empty ? '<button class="btn btn-dark" type="button" data-close="manual">Continue manually</button>' : '',
+    current: me.plan,
+  });
+}
 function loadFrame() { frame.src = `/frame/${id}/${state.token}/${state.page}`; }
 
 async function init() {
+  loadMe().catch(() => {});
   const d = await api('');
   state.meta = d; state.token = d.frameToken;
   document.title = `${d.name} · ili studio`;
@@ -302,15 +328,70 @@ $('#siteName').onchange = async (e) => {
   const name = e.target.value.trim(); if (!name) { e.target.value = state.meta.name; return; }
   try { const d = await api('', { method: 'PATCH', body: JSON.stringify({ name }) }); state.meta.name = d.name; document.title = `${d.name} · ili studio`; } catch (err) { toast(esc(err.message), true); }
 };
-$('#publish').onclick = async () => {
-  const b = $('#publish'); b.disabled = true; b.textContent = 'Publishing…';
-  try {
-    const d = await api('/publish', { method: 'POST' });
-    state.meta.publishedAt = d.publishedAt; state.meta.dirty = false; setStatus();
-    toast(`Published · <a href="${esc(d.url)}" target="_blank" rel="noopener">Open your site ↗</a>`);
-  } catch (e) { toast(esc(e.message), true); }
-  finally { b.disabled = false; b.textContent = 'Publish'; }
-};
+$('#publish').onclick = () => openPublish();
+async function openPublish() {
+  flushStyle?.();
+  let a;
+  try { a = await api('/address'); } catch (e) { return toast(esc(e.message), true); }
+  const plan = a.plan; // null for the admin
+  const { renderOffers, choosePlan } = await import('/_ili/offers.js');
+  const wrap = document.createElement('div');
+  wrap.className = 'omodal';
+  wrap.innerHTML = `<div class="osheet pub" role="dialog" aria-modal="true" aria-label="Publish your site">
+    <div class="ohead"><h2>Publish your site</h2><button class="btn btn-sm" type="button" data-close aria-label="Close">✕</button></div>
+    <section class="pbox">
+      <span class="label">${plan && !plan.customDomain ? 'Your free address' : 'Your address'}</span>
+      <div class="addr"><span>https://</span><input class="input" id="pubSub" value="${esc(a.sub)}" maxlength="40" autocomplete="off" spellcheck="false" aria-label="Address"><span>.${esc(a.freeDomain)}</span></div>
+      <p class="amsg" id="pubMsg" aria-live="polite"></p>
+      ${a.locked.length ? `<p class="lock">Your ${esc(plan?.name || '')} plan publishes ${a.live.length === 1 ? 'one page' : a.live.length + ' pages'}: <b>${a.live.map(pageLabel).map(esc).join(', ')}</b>. Your page${a.locked.length > 1 ? 's' : ''} <b>${a.locked.map(pageLabel).map(esc).join(', ')}</b> ${a.locked.length > 1 ? 'are' : 'is'} ready and will go live as soon as you choose a plan.</p>` : ''}
+      <div class="row"><button class="btn btn-primary" id="pubGo" type="button">${plan?.id === 'free' ? 'Publish for free →' : 'Publish →'}</button></div>
+      <div class="done" id="pubDone" hidden></div>
+    </section>
+    ${plan && !plan.customDomain ? `<section class="pup">
+      <h3>Want your own domain, like yourbusiness.co.uk?</h3>
+      <p class="muted">Plus and Pro put your site on your own domain, with more pages and more AI credits. Free stays free if you prefer.</p>
+      <div class="ogrid"></div><p class="onote" hidden></p>
+    </section>` : ''}
+  </div>`;
+  document.body.appendChild(wrap);
+  const close = () => wrap.remove();
+  wrap.addEventListener('click', (e) => { if (e.target === wrap || e.target.closest('[data-close]')) close(); });
+  const input = wrap.querySelector('#pubSub'), msg = wrap.querySelector('#pubMsg'), go = wrap.querySelector('#pubGo');
+  let ok = a.ok, t;
+  const showCheck = (d) => { ok = d.ok; msg.className = 'amsg ' + (d.ok ? 'ok' : 'bad'); msg.textContent = d.ok ? (d.current === d.sub ? 'This is your current address.' : 'This address is available.') : d.error; go.disabled = !d.ok; };
+  showCheck(a);
+  input.oninput = () => {
+    clearTimeout(t); msg.className = 'amsg'; msg.textContent = 'Checking…'; go.disabled = true;
+    t = setTimeout(async () => { try { const d = await api(`/address?sub=${encodeURIComponent(input.value)}`); if (input.value !== d.sub) input.value = d.sub; showCheck(d); } catch (e) { msg.textContent = e.message; } }, 350);
+  };
+  go.onclick = async () => {
+    if (!ok) return;
+    go.disabled = true; go.textContent = 'Publishing…';
+    try {
+      const d = await api('/publish', { method: 'POST', body: JSON.stringify({ sub: input.value }) });
+      state.meta.publishedAt = d.publishedAt; state.meta.dirty = false; state.meta.subdomain = input.value; setStatus();
+      const shown = d.url.replace(/^https:\/\//, '').replace(/\/$/, '');
+      const done = wrap.querySelector('#pubDone'); done.hidden = false;
+      done.innerHTML = `<b>Your site is live!</b> <a href="${esc(liveUrl(input.value))}" target="_blank" rel="noopener">${esc(shown)} ↗</a>`;
+      go.textContent = 'Publish again';
+    } catch (e) {
+      msg.className = 'amsg bad'; msg.textContent = e.message;
+      if (e.code === 'publish_limit') wrap.querySelector('.pup')?.scrollIntoView({ behavior: 'smooth' });
+      go.textContent = plan?.id === 'free' ? 'Publish for free →' : 'Publish →';
+    }
+    go.disabled = !ok;
+  };
+  const og = wrap.querySelector('.pup .ogrid');
+  if (og) renderOffers(og, {
+    current: plan.id, only: 'paid',
+    onPick: async (p) => {
+      await choosePlan(p).catch(() => {});
+      const n = wrap.querySelector('.pup .onote'); n.hidden = false;
+      n.textContent = 'Thank you! Card payment and domain registration open very soon: we have saved your choice and will email you. Meanwhile your free address works straight away.';
+    },
+  });
+  input.focus(); input.select();
+}
 document.addEventListener('keydown', (e) => {
   const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
   if (!typing && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
@@ -370,11 +451,15 @@ async function askWren() {
       go.textContent = `Wren is working (${Math.round((Date.now() - t0) / 1000)}s) `;
     }
     $('#undo').disabled = !d.undo; state.meta.dirty = true; setStatus();
+    if (d.credits != null) { me.credits = d.credits; showCredits(); }
     state.reselect = sel.id; loadFrame();
     $('#wrenInput').value = '';
     toast(`${esc(d.note || 'Wren updated this part')} · <a href="#" id="tUndo">Undo</a>`);
     setTimeout(() => { const u = document.getElementById('tUndo'); if (u) u.onclick = (ev) => { ev.preventDefault(); undo(); }; }, 0);
-  } catch (e) { toast(esc(e.name === 'TimeoutError' ? 'Wren took too long. Try again or select a smaller part.' : e.message), true); }
+  } catch (e) {
+    if (e.code === 'no_credits') { me.credits = 0; showCredits(); creditsOut(true); }
+    else toast(esc(e.name === 'TimeoutError' ? 'Wren took too long. Try again or select a smaller part.' : e.message), true);
+  }
   finally { go.classList.remove('busy'); go.textContent = 'Ask Wren →'; $('#canvas').classList.remove('thinking'); }
 }
 fetch('/api/ai').then((r) => r.json()).then((d) => { Object.assign(ai, d); wrenUi(state.sel); }).catch(() => {});

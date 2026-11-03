@@ -1,6 +1,10 @@
 /* Shared shell for dashboard pages (sites, themes) */
 .top { display: flex; align-items: center; gap: 24px; height: 64px; padding: 0 24px; background: rgba(246,247,249,.92); border-bottom: 1px solid var(--grid); position: sticky; top: 0; z-index: 5; backdrop-filter: blur(10px); }
-.top form { margin-left: auto; }
+.top form { margin-left: 0; }
+.acct { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.acct .who { color: var(--slate); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct .credits { font: 500 12px var(--mono); }
+@media (max-width: 720px) { .acct .who { display: none; } }
 .tabs { display: flex; gap: 4px; }
 .tabs a { text-decoration: none; font-weight: 600; font-size: 14px; padding: 8px 12px; border-radius: var(--r); }
 .tabs a:hover { background: var(--white); }

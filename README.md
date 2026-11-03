@@ -82,6 +82,8 @@ Attention : avec l'offre gratuite de Gemini, Google peut utiliser les contenus e
    - **Environmental Variables** (mode Bulk Edit) :
      ```
      ADMIN_PASSWORD=un-mot-de-passe-long
+     ADMIN_EMAIL=admin            (optionnel : identifiant admin, « admin » par défaut)
+     FREE_DOMAIN=yela.uk          (optionnel : domaine des sites gratuits)
      SESSION_SECRET=une-longue-chaine-aleatoire
      ```
    - **Container HTTP Port** : `3000`.
@@ -101,3 +103,16 @@ ADMIN_PASSWORD=test npm run dev   # http://localhost:3000
 ```
 
 Les données sont dans `./data` (ou `DATA_DIR`).
+
+
+## Comptes clients et offres
+
+- Les clients créent leur compte sur `/signup` (e-mail + mot de passe, hachés en scrypt dans `DATA_DIR/users`).
+- L'admin se connecte avec `ADMIN_EMAIL` (par défaut `admin`) et `ADMIN_PASSWORD`. Lui seul voit l'admin des thèmes et tous les sites.
+- Après l'inscription, l'écran `/welcome` présente les offres (Free, Essential, Plus, Pro, définies dans `src/plans.js`).
+  Le paiement n'est pas encore branché : un choix payant est enregistré (`wantsPlan`) et le client continue en gratuit.
+- Crédits IA : 30 à l'inscription (Free). Wren coûte 1 crédit (texte) ou 2 (bloc). La première création d'un site et la recherche de photos sont gratuites.
+  À 0 crédit, l'éditeur propose « Continuer manuellement » ou les offres.
+- Publication : le client choisit son adresse `nom.yela.uk`. En Free, seule la page d'accueil est publiée (les liens vers les autres pages
+  sont retirés), avec un petit lien « Website made with ili studio by Ilidweb » en bas.
+- Les sites gratuits sont servis directement selon le nom d'hôte `*.FREE_DOMAIN` (DNS : `*` et `@` vers l'IP du serveur).

@@ -15,7 +15,9 @@ import { wren, aiStatus, AiError, ping, askJson } from './ai.js';
 import { searchPhotos, importPhoto, saveImage, bankStatus, ImageError } from './images.js';
 import { listThemes, getTheme, publicTheme, installTheme, removeTheme, restoreTheme, copyThemeTo, applyPalette } from './themes.js';
 import { personalise, cleanBrief } from './personalise.js';
-import { requireAuth, login, logout, isAuthed, frameToken, checkFrameToken } from './auth.js';
+import { requireAuth, requireAdmin, login, signup, logout, currentUser, frameToken, checkFrameToken } from './auth.js';
+import * as users from './users.js';
+import { PLANS, planOf, COSTS, FREE_DOMAIN, RESERVED } from './plans.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(__dirname, '..', 'public');
@@ -32,6 +34,17 @@ app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'same-origin');
   next();
+});
+
+// Free sites: <name>.FREE_DOMAIN is served straight from the published copy (nothing of the app is reachable there).
+app.use((req, res, next) => {
+  const host = String(req.hostname || '').toLowerCase();
+  if (host === FREE_DOMAIN || host === 'www.' + FREE_DOMAIN) return res.redirect(302, 'https://ilidweb.uk/ili-studio/');
+  if (!host.endsWith('.' + FREE_DOMAIN)) return next();
+  if (req.method !== 'GET' && req.method !== 'HEAD') return res.status(405).send('Method not allowed');
+  const sub = host.slice(0, -FREE_DOMAIN.length - 1);
+  const parts = decodeURIComponent(req.path).split('/').filter(Boolean);
+  serveSite(sub, parts, res).catch(next);
 });
 
 // Site content (draft in the editor, published sites) runs in an opaque origin, so its scripts
@@ -65,23 +78,70 @@ const wrap = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 app.use('/_ili', express.static(path.join(PUBLIC, 'assets'), { maxAge: 0 }));
 
 // ---- auth ----------------------------------------------------------------------------
-app.get('/login', (req, res) => (isAuthed(req) ? res.redirect('/') : send(res, 'login.html')));
-app.post('/login', (req, res) => {
-  const r = login(req, res, req.body.password);
+app.get('/login', wrap(async (req, res) => ((await currentUser(req)) ? res.redirect('/') : send(res, 'login.html'))));
+app.get('/signup', wrap(async (req, res) => ((await currentUser(req)) ? res.redirect('/') : send(res, 'signup.html'))));
+app.post('/login', wrap(async (req, res) => {
+  const r = await login(req, res, req.body.email, req.body.password);
   if (r.ok) return res.redirect('/');
-  res.redirect('/login?error=' + encodeURIComponent(r.error));
-});
+  res.redirect('/login?error=' + encodeURIComponent(r.error) + '&email=' + encodeURIComponent(String(req.body.email || '').slice(0, 120)));
+}));
+app.post('/signup', wrap(async (req, res) => {
+  const r = await signup(req, res, { email: req.body.email, password: req.body.password, name: req.body.name });
+  if (r.ok) return res.redirect('/welcome');
+  res.redirect('/signup?error=' + encodeURIComponent(r.error) + '&email=' + encodeURIComponent(String(req.body.email || '').slice(0, 120)));
+}));
 app.post('/logout', (req, res) => { logout(res); res.redirect('/login'); });
 
+// ---- account, plans and credits --------------------------------------------------------
+app.get('/api/plans', (req, res) => res.json({ plans: PLANS, freeDomain: FREE_DOMAIN, costs: COSTS }));
+app.get('/api/me', requireAuth, (req, res) => res.json({ ...users.publicUser(req.user), planInfo: planOf(req.user) }));
+/** The client's choice on the offers screen. Paid plans are recorded until card payment is switched on. */
+app.post('/api/me/choice', requireAuth, wrap(async (req, res) => {
+  const plan = PLANS.find((p) => p.id === req.body.plan);
+  if (!plan) return res.status(400).json({ error: 'Unknown plan' });
+  const u = req.user;
+  u.planChosen = true;
+  if (plan.id !== 'free') u.wantsPlan = plan.id;
+  await users.save(u);
+  res.json({ ...users.publicUser(u), payments: false });
+}));
+app.get('/welcome', requireAuth, (req, res) => send(res, 'welcome.html'));
+
+// ---- ownership ------------------------------------------------------------------------
+class HttpError extends Error { constructor(status, message, code) { super(message); this.status = status; this.code = code; } }
+/** The site in the URL, if the signed-in user owns it (the admin sees every site). */
+async function siteFor(req, id = req.params.id) {
+  let meta;
+  try { meta = await store.readMeta(String(id)); } catch { throw new HttpError(404, 'Site not found'); }
+  if (req.user.role !== 'admin' && meta.owner !== req.user.id) throw new HttpError(404, 'Site not found');
+  return meta;
+}
+/** Why the user cannot create another site, or null. */
+async function siteLimit(user) {
+  if (user.role === 'admin') return null;
+  const plan = planOf(user);
+  const n = (await store.listSites()).filter((s) => s.owner === user.id).length;
+  return n >= plan.sites ? `Your ${plan.name} plan allows ${plan.sites} sites. Delete one to start another.` : null;
+}
+
 // ---- dashboard & editor pages -------------------------------------------------------------
-app.get('/', requireAuth, (req, res) => send(res, 'dashboard.html'));
-app.get('/editor/:id', requireAuth, (req, res) => send(res, 'editor.html'));
+app.get('/', requireAuth, (req, res) => (req.user.role !== 'admin' && !req.user.planChosen ? res.redirect('/welcome') : send(res, 'dashboard.html')));
+app.get('/editor/:id', requireAuth, wrap(async (req, res) => { await siteFor(req); send(res, 'editor.html'); }));
 
 // ---- API -------------------------------------------------------------------------
-app.get('/api/sites', requireAuth, wrap(async (req, res) => res.json(await store.listSites())));
+app.get('/api/sites', requireAuth, wrap(async (req, res) => {
+  const all = await store.listSites();
+  if (req.user.role === 'admin') {
+    const emails = new Map((await users.list()).map((u) => [u.id, u.email]));
+    return res.json(all.map((s) => ({ ...s, ownerEmail: s.owner ? emails.get(s.owner) || '?' : null })));
+  }
+  res.json(all.filter((s) => s.owner === req.user.id));
+}));
 
 app.post('/api/sites', requireAuth, upload.single('file'), wrap(async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Choose a .zip or .html file' });
+  const limit = await siteLimit(req.user);
+  if (limit) { fs.rm(req.file.path, { force: true }); return res.status(403).json({ error: limit, code: 'site_limit' }); }
   const id = store.newId();
   const dir = store.siteDir(id);
   try {
@@ -92,7 +152,7 @@ app.post('/api/sites', requireAuth, upload.single('file'), wrap(async (req, res)
     let slug = store.slugify(name);
     for (let n = 2; await store.slugTaken(slug); n++) slug = `${store.slugify(name)}-${n}`;
     const now = new Date().toISOString();
-    const meta = { id, name: name.slice(0, 80), slug, pages, createdAt: now, updatedAt: now, publishedAt: null, source: req.file.originalname };
+    const meta = { id, owner: req.user.id, name: name.slice(0, 80), slug, pages, createdAt: now, updatedAt: now, publishedAt: null, source: req.file.originalname };
     await store.writeMeta(id, meta);
     res.json(meta);
   } catch (e) {
@@ -105,13 +165,13 @@ app.post('/api/sites', requireAuth, upload.single('file'), wrap(async (req, res)
 }));
 
 app.get('/api/sites/:id', requireAuth, wrap(async (req, res) => {
-  const meta = await store.readMeta(req.params.id);
+  const meta = await siteFor(req);
   const page = req.query.page || 'index.html';
   res.json({ ...meta, frameToken: frameToken(meta.id), undo: await store.historyCount(meta.id, page) });
 }));
 
 app.patch('/api/sites/:id', requireAuth, wrap(async (req, res) => {
-  const meta = await store.readMeta(req.params.id);
+  const meta = await siteFor(req);
   if (typeof req.body.name === 'string' && req.body.name.trim()) meta.name = req.body.name.trim().slice(0, 80);
   if (typeof req.body.slug === 'string') {
     const slug = store.slugify(req.body.slug);
@@ -124,13 +184,14 @@ app.patch('/api/sites/:id', requireAuth, wrap(async (req, res) => {
 }));
 
 app.delete('/api/sites/:id', requireAuth, wrap(async (req, res) => {
+  await siteFor(req);
   await fs.rm(store.siteDir(req.params.id), { recursive: true, force: true });
   res.json({ ok: true });
 }));
 
 /** Apply edit operations to one page. Body: { page, ops: [...] } */
 app.post('/api/sites/:id/ops', requireAuth, wrap(async (req, res) => {
-  const meta = await store.readMeta(req.params.id);
+  const meta = await siteFor(req);
   const page = String(req.body.page || 'index.html');
   if (!meta.pages.includes(page)) return res.status(404).json({ error: 'Page not found' });
   if (!Array.isArray(req.body.ops) || !req.body.ops.length || req.body.ops.length > 50) return res.status(400).json({ error: 'No changes sent' });
@@ -148,19 +209,21 @@ app.post('/api/sites/:id/ops', requireAuth, wrap(async (req, res) => {
 
 // ---- Wren (AI) ------------------------------------------------------------------------
 app.get('/api/ai', requireAuth, (req, res) => res.json(aiStatus()));
-app.get('/api/ai/ping', requireAuth, wrap(async (req, res) => res.json(await ping())));
+app.get('/api/ai/ping', requireAdmin, wrap(async (req, res) => res.json(await ping())));
 
 const aiCalls = []; // simple guard: max 20 AI calls per minute for the whole app
 const jobs = new Map(); // jobId -> { status: 'working'|'done'|'error', error?, undo?, site, at }
 
 /** Start a Wren job; the editor polls GET /api/sites/:id/wren/:job (avoids proxy time-outs on slow AI). */
 app.post('/api/sites/:id/wren', requireAuth, wrap(async (req, res) => {
-  const meta = await store.readMeta(req.params.id);
+  const meta = await siteFor(req);
   const page = String(req.body.page || 'index.html');
   const elId = String(req.body.id || '');
   const instruction = String(req.body.instruction || '').trim().slice(0, 500);
   if (!meta.pages.includes(page)) return res.status(404).json({ error: 'Page not found' });
   if (!instruction) return res.status(400).json({ error: 'Tell Wren what to do' });
+  const cost = req.body.mode === 'text' ? COSTS.wrenText : COSTS.wrenBlock;
+  if (!users.canSpend(req.user, cost)) return res.status(402).json({ error: 'You have used all your AI credits.', code: 'no_credits', credits: req.user.credits });
   const now = Date.now(); while (aiCalls.length && now - aiCalls[0] > 60000) aiCalls.shift();
   if (aiCalls.length >= 20) return res.status(429).json({ error: 'Wren is busy. Wait a minute and try again.' });
   aiCalls.push(now);
@@ -176,7 +239,7 @@ app.post('/api/sites/:id/wren', requireAuth, wrap(async (req, res) => {
   const palette = await sitePalette(store.draftDir(meta.id));
 
   const jobId = store.newId();
-  const job = { status: 'working', site: meta.id, at: Date.now() };
+  const job = { status: 'working', site: meta.id, owner: req.user.id, at: Date.now() };
   jobs.set(jobId, job);
   for (const [k, j] of jobs) if (Date.now() - j.at > 10 * 60 * 1000) jobs.delete(k);
   res.status(202).json({ job: jobId });
@@ -221,7 +284,8 @@ app.post('/api/sites/:id/wren', requireAuth, wrap(async (req, res) => {
       m.updatedAt = new Date().toISOString(); m.dirty = true;
       m.aiUsage = { calls: (m.aiUsage?.calls || 0) + 1, input: (m.aiUsage?.input || 0) + out.usage.input, output: (m.aiUsage?.output || 0) + out.usage.output };
       await store.writeMeta(meta.id, m);
-      Object.assign(job, { status: 'done', note: out.note, undo: await store.historyCount(meta.id, page) });
+      const payer = await users.spend(req.user.id, cost);
+      Object.assign(job, { status: 'done', note: out.note, undo: await store.historyCount(meta.id, page), credits: payer?.role === 'admin' ? null : payer?.credits });
     } catch (e) {
       if (!(e instanceof AiError)) console.error('[wren] job failed:', e);
       Object.assign(job, { status: 'error', error: e instanceof AiError ? e.message : 'Wren hit a problem. Try again.' });
@@ -231,12 +295,12 @@ app.post('/api/sites/:id/wren', requireAuth, wrap(async (req, res) => {
 
 app.get('/api/sites/:id/wren/:job', requireAuth, (req, res) => {
   const job = jobs.get(req.params.job);
-  if (!job || job.site !== req.params.id) return res.status(404).json({ error: 'Unknown Wren task' });
-  res.json({ status: job.status, error: job.error, note: job.note, undo: job.undo });
+  if (!job || job.site !== req.params.id || (job.owner !== req.user.id && req.user.role !== 'admin')) return res.status(404).json({ error: 'Unknown Wren task' });
+  res.json({ status: job.status, error: job.error, note: job.note, undo: job.undo, credits: job.credits });
 });
 
 app.post('/api/sites/:id/undo', requireAuth, wrap(async (req, res) => {
-  const meta = await store.readMeta(req.params.id);
+  const meta = await siteFor(req);
   const page = String(req.body.page || 'index.html');
   if (!meta.pages.includes(page)) return res.status(404).json({ error: 'Page not found' });
   const html = await store.popHistory(meta.id, page);
@@ -272,7 +336,7 @@ const relFromPage = (page, file) => path.posix.relative(path.posix.dirname(page)
 
 /** Upload an image into the site (resized + compressed); returns a path relative to the page. */
 app.post('/api/sites/:id/images', requireAuth, imageUpload.single('image'), wrap(async (req, res) => {
-  const meta = await store.readMeta(req.params.id);
+  const meta = await siteFor(req);
   if (!req.file) return res.status(400).json({ error: 'Choose a PNG, JPG, GIF, WebP, AVIF or SVG image (max 10 MB)' });
   const page = String(req.body.page || 'index.html');
   try {
@@ -304,7 +368,7 @@ async function editPages(meta, fn) {
 
 /** Colour palettes the site can switch between (from its theme) + colours used, for the style swatches. */
 app.get('/api/sites/:id/palettes', requireAuth, wrap(async (req, res) => {
-  const meta = await store.readMeta(req.params.id);
+  const meta = await siteFor(req);
   const theme = meta.theme ? await getTheme(meta.theme.id) : null;
   const palettes = theme?.palettes || [];
   const current = palettes.find((p) => p.id === meta.palette) || null;
@@ -314,7 +378,7 @@ app.get('/api/sites/:id/palettes', requireAuth, wrap(async (req, res) => {
 
 /** Switch the site's palette. Body: { palette } */
 app.post('/api/sites/:id/palette', requireAuth, wrap(async (req, res) => {
-  const meta = await store.readMeta(req.params.id);
+  const meta = await siteFor(req);
   const theme = meta.theme ? await getTheme(meta.theme.id) : null;
   const pal = theme?.palettes.find((p) => p.id === req.body.palette);
   if (!pal) return res.status(404).json({ error: 'Palette not found' });
@@ -326,14 +390,14 @@ app.post('/api/sites/:id/palette', requireAuth, wrap(async (req, res) => {
 
 /** Templates the site can use (from its theme). */
 app.get('/api/sites/:id/templates', requireAuth, wrap(async (req, res) => {
-  const meta = await store.readMeta(req.params.id);
+  const meta = await siteFor(req);
   const theme = meta.theme ? await getTheme(meta.theme.id) : null;
   res.json(theme ? theme.templates.map(({ id, name, path: p }) => ({ id, name, path: p })) : []);
 }));
 
 /** Add a page. Body: { title, from: 'blank'|'duplicate'|'template', source?, template?, menu?: true } */
 app.post('/api/sites/:id/pages', requireAuth, wrap(async (req, res) => {
-  const meta = await store.readMeta(req.params.id);
+  const meta = await siteFor(req);
   const title = String(req.body.title || '').trim().slice(0, 60);
   if (!title) return res.status(400).json({ error: 'Give the page a name' });
   let file = store.slugify(title) + '.html';
@@ -394,7 +458,7 @@ app.post('/api/sites/:id/pages', requireAuth, wrap(async (req, res) => {
 
 /** Rename a page (its title and its menu links). Body: { page, title } */
 app.patch('/api/sites/:id/pages', requireAuth, wrap(async (req, res) => {
-  const meta = await store.readMeta(req.params.id);
+  const meta = await siteFor(req);
   const page = String(req.body.page || ''); const title = String(req.body.title || '').trim().slice(0, 60);
   if (!meta.pages.includes(page) || !title) return res.status(400).json({ error: 'Page and new name required' });
   await editPages(meta, ($, p) => {
@@ -408,7 +472,7 @@ app.patch('/api/sites/:id/pages', requireAuth, wrap(async (req, res) => {
 
 /** Delete a page (not the home page) and its menu links. */
 app.delete('/api/sites/:id/pages', requireAuth, wrap(async (req, res) => {
-  const meta = await store.readMeta(req.params.id);
+  const meta = await siteFor(req);
   const page = String(req.query.page || '');
   if (!meta.pages.includes(page)) return res.status(404).json({ error: 'Page not found' });
   if (page === 'index.html') return res.status(400).json({ error: 'The home page cannot be deleted' });
@@ -433,7 +497,7 @@ app.get('/api/images/search', requireAuth, wrap(async (req, res) => {
 
 /** Put a library photo into the site. Body: { page, photo: {id, full, preview, tags, author, page} } */
 app.post('/api/sites/:id/images/library', requireAuth, wrap(async (req, res) => {
-  const meta = await store.readMeta(req.params.id);
+  const meta = await siteFor(req);
   const page = String(req.body.page || 'index.html');
   const ph = req.body.photo || {};
   try {
@@ -446,7 +510,7 @@ app.post('/api/sites/:id/images/library', requireAuth, wrap(async (req, res) => 
 
 /** Wren suggests a photo search for the selected image, from the page and the brief. Body: { page, id } */
 app.post('/api/sites/:id/images/suggest', requireAuth, wrap(async (req, res) => {
-  const meta = await store.readMeta(req.params.id);
+  const meta = await siteFor(req);
   const page = String(req.body.page || 'index.html');
   if (!meta.pages.includes(page)) return res.status(404).json({ error: 'Page not found' });
   const html = await fs.readFile(store.safeJoin(store.draftDir(meta.id), page), 'utf8');
@@ -463,19 +527,19 @@ app.post('/api/sites/:id/images/suggest', requireAuth, wrap(async (req, res) => 
 }));
 
 // ---- themes ------------------------------------------------------------------------------------
-app.get('/themes', requireAuth, (req, res) => send(res, 'themes.html'));
-app.get('/api/themes', requireAuth, wrap(async (req, res) => res.json((await listThemes({ includeHidden: req.query.all === '1' })).map(publicTheme))));
-app.post('/api/themes', requireAuth, upload.single('file'), wrap(async (req, res) => {
+app.get('/themes', requireAdmin, (req, res) => send(res, 'themes.html'));
+app.get('/api/themes', requireAuth, wrap(async (req, res) => res.json((await listThemes({ includeHidden: req.query.all === '1' && req.user.role === 'admin' })).map(publicTheme))));
+app.post('/api/themes', requireAdmin, upload.single('file'), wrap(async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Choose a theme .zip file' });
   try { res.json(publicTheme(await installTheme(req.file.path, req.file.originalname))); }
   catch (e) { if (e instanceof ImportError) return res.status(400).json({ error: e.message }); throw e; }
   finally { fs.rm(req.file.path, { force: true }); }
 }));
-app.post('/api/themes/:id/restore', requireAuth, wrap(async (req, res) => {
+app.post('/api/themes/:id/restore', requireAdmin, wrap(async (req, res) => {
   try { await restoreTheme(req.params.id); res.json({ ok: true }); }
   catch (e) { if (e instanceof ImportError) return res.status(400).json({ error: e.message }); throw e; }
 }));
-app.delete('/api/themes/:id', requireAuth, wrap(async (req, res) => {
+app.delete('/api/themes/:id', requireAdmin, wrap(async (req, res) => {
   try { await removeTheme(req.params.id); res.json({ ok: true }); }
   catch (e) { if (e instanceof ImportError) return res.status(400).json({ error: e.message }); throw e; }
 }));
@@ -496,6 +560,8 @@ app.post('/api/sites/from-theme', requireAuth, wrap(async (req, res) => {
   if (!theme || theme.hidden) return res.status(404).json({ error: 'Theme not found' });
   const brief = cleanBrief(req.body.brief);
   if (!brief.business || !brief.trade) return res.status(400).json({ error: 'Business name and trade are required' });
+  const limit = await siteLimit(req.user);
+  if (limit) return res.status(403).json({ error: limit, code: 'site_limit' });
   const id = store.newId();
   await fs.mkdir(store.draftDir(id), { recursive: true });
   await copyThemeTo(theme, store.draftDir(id));
@@ -504,11 +570,11 @@ app.post('/api/sites/from-theme', requireAuth, wrap(async (req, res) => {
   let slug = store.slugify(brief.business);
   for (let n = 2; await store.slugTaken(slug); n++) slug = `${store.slugify(brief.business)}-${n}`;
   const now = new Date().toISOString();
-  const meta = { id, name: brief.business, slug, pages: theme.pages, theme: { id: theme.id, version: theme.version }, palette: palette?.id || null, brief, createdAt: now, updatedAt: now, publishedAt: null, source: 'theme:' + theme.id, personalising: true };
+  const meta = { id, owner: req.user.id, name: brief.business, slug, pages: theme.pages, theme: { id: theme.id, version: theme.version }, palette: palette?.id || null, brief, createdAt: now, updatedAt: now, publishedAt: null, source: 'theme:' + theme.id, personalising: true };
   await store.writeMeta(id, meta);
 
   const jobId = store.newId();
-  const job = { status: 'working', site: id, at: Date.now() };
+  const job = { status: 'working', site: id, owner: req.user.id, at: Date.now() };
   jobs.set(jobId, job);
   res.status(202).json({ id, job: jobId });
 
@@ -534,26 +600,100 @@ app.post('/api/sites/from-theme', requireAuth, wrap(async (req, res) => {
 
 app.get('/api/jobs/:job', requireAuth, (req, res) => {
   const job = jobs.get(req.params.job);
-  if (!job) return res.status(404).json({ error: 'Unknown task' });
+  if (!job || (job.owner !== req.user.id && req.user.role !== 'admin')) return res.status(404).json({ error: 'Unknown task' });
   res.json({ status: job.status, error: job.error, note: job.note, site: job.site });
 });
 
+// ---- publishing ----------------------------------------------------------------------------
+const SUB_RE = /^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])$/;
+/** Is this free address available for this site? Returns an error message or null. */
+async function addressProblem(sub, siteId) {
+  if (!SUB_RE.test(sub)) return 'Use 3 to 40 letters, digits or dashes (no dash at the start or end).';
+  if (RESERVED.has(sub) || /^xn--/.test(sub)) return 'This address is reserved. Try another one.';
+  const taken = (await store.listSites()).some((s) => s.id !== siteId && (s.subdomain === sub || (!s.subdomain && s.publishedAt && s.slug === sub)));
+  return taken ? 'This address is already taken. Try another one.' : null;
+}
+const freeUrl = (sub) => `https://${sub}.${FREE_DOMAIN}/`;
+
+/** Which pages a plan publishes: the home page first, then the others in order, up to the plan limit. */
+function publishable(meta, user) {
+  const plan = user.role === 'admin' ? { pages: null } : planOf(user);
+  const ordered = ['index.html', ...meta.pages.filter((p) => p !== 'index.html')].filter((p) => meta.pages.includes(p));
+  const live = plan.pages ? ordered.slice(0, plan.pages) : ordered;
+  return { live, locked: ordered.filter((p) => !live.includes(p)) };
+}
+
+app.get('/api/sites/:id/address', requireAuth, wrap(async (req, res) => {
+  const meta = await siteFor(req);
+  const sub = store.slugify(String(req.query.sub ?? meta.subdomain ?? meta.slug)).slice(0, 40);
+  const problem = await addressProblem(sub, meta.id);
+  const { live, locked } = publishable(meta, req.user);
+  res.json({ sub, ok: !problem, error: problem, url: freeUrl(sub), freeDomain: FREE_DOMAIN, current: meta.subdomain || null, live, locked, plan: req.user.role === 'admin' ? null : planOf(req.user) });
+}));
+
 app.post('/api/sites/:id/publish', requireAuth, wrap(async (req, res) => {
-  const meta = await store.readMeta(req.params.id);
+  const meta = await siteFor(req);
+  const sub = store.slugify(String(req.body.sub ?? meta.subdomain ?? meta.slug)).slice(0, 40);
+  const problem = await addressProblem(sub, meta.id);
+  if (problem) return res.status(409).json({ error: problem });
+  if (req.user.role !== 'admin') {
+    const others = (await store.listSites()).filter((s) => s.owner === req.user.id && s.id !== meta.id && s.publishedAt).length;
+    const maxLive = req.user.plan === 'free' ? 1 : planOf(req.user).sites;
+    if (others >= maxLive) return res.status(403).json({ error: `Your ${planOf(req.user).name} plan can have ${maxLive} published site${maxLive > 1 ? 's' : ''}. Unpublish the other one first, or choose a plan.`, code: 'publish_limit' });
+  }
+  const { live, locked } = publishable(meta, req.user);
   const src = store.draftDir(meta.id);
   const tmp = store.publishedDir(meta.id) + '.tmp';
   await fs.rm(tmp, { recursive: true, force: true });
   await fs.cp(src, tmp, { recursive: true });
   for (const page of meta.pages) {
     const f = store.safeJoin(tmp, page);
-    await fs.writeFile(f, strip(await fs.readFile(f, 'utf8')));
+    if (!live.includes(page)) { await fs.rm(f, { force: true }); continue; }
+    let html = strip(await fs.readFile(f, 'utf8'));
+    if (locked.length) html = unlinkPages(html, page, locked);
+    if (req.user.role !== 'admin' && planOf(req.user).id === 'free') html = addBadge(html, sub);
+    await fs.writeFile(f, html);
   }
   await fs.rm(store.publishedDir(meta.id), { recursive: true, force: true });
   await fs.rename(tmp, store.publishedDir(meta.id));
   meta.publishedAt = new Date().toISOString(); meta.dirty = false;
+  meta.subdomain = sub; meta.livePages = live;
   await store.writeMeta(meta.id, meta);
-  res.json({ ok: true, url: `/s/${meta.slug}/`, publishedAt: meta.publishedAt });
+  res.json({ ok: true, url: freeUrl(sub), preview: `/s/${sub}/`, publishedAt: meta.publishedAt, live, locked });
 }));
+
+app.post('/api/sites/:id/unpublish', requireAuth, wrap(async (req, res) => {
+  const meta = await siteFor(req);
+  await fs.rm(store.publishedDir(meta.id), { recursive: true, force: true });
+  meta.publishedAt = null; meta.livePages = [];
+  await store.writeMeta(meta.id, meta);
+  res.json({ ok: true });
+}));
+
+/** Free sites carry a small "Made with ili studio by Ilidweb" bar at the very bottom (removed on paid plans). */
+function addBadge(html, sub) {
+  const badge = `<div id="ili-badge" style="all:initial;display:block;background:#0D1221;text-align:center;padding:10px 16px;font:500 13px/1.4 system-ui,-apple-system,'Segoe UI',sans-serif">`
+    + `<a href="https://ilidweb.uk/ili-studio/?utm_source=free-site&amp;utm_medium=badge&amp;utm_campaign=${encodeURIComponent(sub)}" target="_blank" rel="noopener" `
+    + `style="all:initial;cursor:pointer;color:#F6F7F9;font:500 13px/1.4 system-ui,-apple-system,'Segoe UI',sans-serif;text-decoration:none">`
+    + `Website made with <b style="all:initial;color:#C8F031;font:700 13px/1.4 system-ui,-apple-system,'Segoe UI',sans-serif">ili studio</b> by Ilidweb · Create yours for free →</a></div>`;
+  return /<\/body>/i.test(html) ? html.replace(/<\/body>(?![\s\S]*<\/body>)/i, badge + '</body>') : html + badge;
+}
+
+/** Remove links to pages that are not published (their menu entries disappear instead of leading to a 404). */
+function unlinkPages(html, page, locked) {
+  const $ = cheerio.load(html);
+  const dir = path.posix.dirname('/' + page);
+  $('a[href]').each((_, a) => {
+    const href = String($(a).attr('href') || '').split('#')[0].split('?')[0];
+    if (!href || /^[a-z][a-z0-9+.-]*:|^\/\//i.test(href)) return;
+    const target = path.posix.normalize(href.startsWith('/') ? href : path.posix.join(dir, href)).replace(/^\//, '').replace(/\/$/, '/index.html') || 'index.html';
+    const file = /\.html?$/i.test(target) ? target : `${target}.html`;
+    if (!locked.includes(file)) return;
+    const li = $(a).parent('li');
+    if (li.length && li.children().length === 1) li.remove(); else $(a).remove();
+  });
+  return $.html();
+}
 
 // ---- editor frame: draft files with the editor script (token-protected, sandboxed) ------
 app.get('/frame/:id/:token/{*path}', wrap(async (req, res) => {
@@ -571,12 +711,11 @@ app.get('/frame/:id/:token/{*path}', wrap(async (req, res) => {
 }));
 
 // ---- published sites ---------------------------------------------------------------
-app.get('/s/:slug', (req, res, next) => (req.originalUrl.endsWith('/') ? next() : res.redirect(301, `/s/${req.params.slug}/`)));
-app.get('/s/:slug/{*path}', wrap(async (req, res) => {
-  const site = (await store.listSites()).find((s) => s.slug === req.params.slug && s.publishedAt);
+async function serveSite(sub, parts, res) {
+  const site = (await store.listSites()).find((s) => s.publishedAt && (s.subdomain === sub || (!s.subdomain && s.slug === sub)));
   if (!site) return res.status(404).send('Site not found');
   const base = store.publishedDir(site.id);
-  let file = store.safeJoin(base, (req.params.path || []).join('/') || 'index.html');
+  let file = store.safeJoin(base, (parts || []).join('/') || 'index.html');
   if (fss.existsSync(file) && fss.statSync(file).isDirectory()) file = path.join(file, 'index.html');
   if (!fss.existsSync(file) && fss.existsSync(file + '.html')) file += '.html';
   if (!fss.existsSync(file)) return res.status(404).send('Page not found');
@@ -584,11 +723,14 @@ app.get('/s/:slug/{*path}', wrap(async (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
   corsOk(res);
   res.sendFile(file);
-}));
+}
+app.get('/s/:slug', (req, res, next) => (req.originalUrl.endsWith('/') ? next() : res.redirect(301, `/s/${req.params.slug}/`)));
+app.get('/s/:slug/{*path}', wrap(async (req, res) => serveSite(req.params.slug, req.params.path, res)));
 
 app.get('/healthz', (req, res) => res.json({ ok: true }));
 
 app.use((err, req, res, next) => {
+  if (err instanceof HttpError) return res.status(err.status).json({ error: err.message, code: err.code });
   console.error(err);
   if (res.headersSent) return next(err);
   res.status(500).json({ error: 'Something went wrong' });
