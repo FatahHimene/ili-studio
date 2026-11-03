@@ -177,9 +177,11 @@ app.post('/api/sites/:id/wren', requireAuth, wrap(async (req, res) => {
       let html = out.html;
       if (mode === 'text') html = html.replace(new RegExp(`^<${el.tag}[^>]*>([\\s\\S]*)</${el.tag}>$`, 'i'), '$1');
       const before = await fs.readFile(file, 'utf8'); // apply on the latest version of the page
+      console.log(`[wren] job ${jobId} ${mode} <${el.tag}> "${instruction.slice(0, 60)}" -> ${html.length} chars: ${html.replace(/\s+/g, ' ').slice(0, 160)}`);
       let result;
       try { result = applyOps(before, [mode === 'text' ? { type: 'html', id: elId, html } : { type: 'replace', id: elId, html }]); }
-      catch { throw new AiError('Wren returned something unusable. Try again.'); }
+      catch (e) { console.error(`[wren] job ${jobId} could not apply:`, e.message); throw new AiError('Wren returned something unusable. Try again.'); }
+      if (result.html === before) { console.warn(`[wren] job ${jobId}: no change`); throw new AiError('Wren answered but suggested no change. Try a more specific instruction.'); }
       await store.pushHistory(meta.id, page, before);
       await fs.writeFile(file, result.html);
       const m = await store.readMeta(meta.id);
