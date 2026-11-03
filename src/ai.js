@@ -20,7 +20,10 @@ Rules:
 - Keep the language of the original content: French stays French, English stays English. When writing English, use British English. Plain, warm, professional. No emoji unless the original uses them.
 - Never invent facts: no made-up prices, phone numbers, addresses, awards, reviews or statistics.
 - Keep the existing HTML structure, tags and class names unless the instruction asks for a different layout.
-- Never add <script>, <iframe>, inline event handlers or external stylesheets.
+- Never add <script>, <iframe>, inline event handlers or external stylesheets. No JavaScript at all.
+- For a redesign of a whole section (layout, 3D, animation, gradients…), you may include ONE <style> element inside the new element.
+  Scope every rule to a new class you put on the root element (e.g. .wren-hero-3d …), use only CSS (transforms, perspective, @keyframes,
+  gradients, grid/flex) and make it responsive. Respect prefers-reduced-motion for animations.
 - For a request about colours, size, spacing, corners, alignment or weight, change "style" and leave "html" out.
 - Answer with ONE JSON object and nothing else:
   {"html": "...", "style": {"css-property": "value"}, "note": "..."}
@@ -28,6 +31,7 @@ Rules:
   "style": only if the look changes. Allowed properties: color, background-color, font-size, font-weight, font-style, text-align,
     text-transform, letter-spacing, line-height, padding, margin-top, margin-bottom, border-radius, border, border-color, border-width,
     border-style, max-width, opacity. Values in CSS (e.g. "#1d4ed8", "18px", "999px").
+  Escape the HTML properly inside the JSON string (quotes as \\", new lines as \\n).
   "note": one short sentence for the site owner, in their language, saying what you changed (or why nothing needed changing).`;
 
 function prompt({ mode, html, instruction, context, style }) {
@@ -65,6 +69,7 @@ function parseAnswer(text) {
         };
       }
     } catch { /* not JSON */ }
+    if (t.trimStart().startsWith('{')) throw new AiError('Wren\'s answer was cut or malformed. Try again, or select a smaller part.');
   }
   return { html: t || null, style: null, note: '' };
 }
@@ -148,14 +153,14 @@ async function callAnthropic(user) {
 
 // ---- Azure OpenAI / Azure AI Foundry (OpenAI-compatible v1 API) ----------------------------
 let azureNoEffort = false;
-async function callAzure(user, system = SYSTEM) {
+async function callAzure(user, system = SYSTEM, { design = false } = {}) {
   let base = String(process.env.AZURE_OPENAI_ENDPOINT || '').trim().replace(/\/+$/, '');
   if (!/\/openai\/v1$/.test(base)) base += '/openai/v1';
-  const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
+  const deployment = (design && process.env.AZURE_OPENAI_DESIGN_DEPLOYMENT) || process.env.AZURE_OPENAI_DEPLOYMENT;
   const body = {
     model: deployment,
     messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
-    max_completion_tokens: 6000,
+    max_completion_tokens: design ? 24000 : 6000,
   };
   const effort = process.env.AZURE_OPENAI_REASONING_EFFORT; // e.g. "minimal" or "low" for reasoning models
   if (effort && !azureNoEffort) body.reasoning_effort = effort;
@@ -166,7 +171,7 @@ async function callAzure(user, system = SYSTEM) {
       r = await fetch(`${base}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'api-key': process.env.AZURE_OPENAI_API_KEY },
-        body: JSON.stringify(body), signal: AbortSignal.timeout(TIMEOUT),
+        body: JSON.stringify(body), signal: AbortSignal.timeout(design ? TIMEOUT * 2 : TIMEOUT),
       });
     } catch (e) {
       console.error(`[wren] azure network error after ${Date.now() - t0}ms:`, e.name, e.message, e.cause?.code || '');
@@ -178,12 +183,13 @@ async function callAzure(user, system = SYSTEM) {
   const d = await r.json().catch(() => ({}));
   console.log(`[wren] azure ${deployment} -> ${r.status} in ${Date.now() - t0}ms`);
   if (!r.ok) console.error('[wren] azure error:', JSON.stringify(d.error || d).slice(0, 500));
-  if (r.status === 400 && body.reasoning_effort && /reasoning/i.test(d.error?.message || '')) { azureNoEffort = true; return callAzure(user, system); }
+  if (r.status === 400 && body.reasoning_effort && /reasoning/i.test(d.error?.message || '')) { azureNoEffort = true; return callAzure(user, system, { design }); }
   if (r.status === 401 || r.status === 403) throw new AiError('Azure refused the key. Check AZURE_OPENAI_API_KEY.');
   if (r.status === 404) throw new AiError(`Azure deployment "${deployment}" not found. Check AZURE_OPENAI_DEPLOYMENT (the deployment name, not the model name).`);
   if (r.status === 429) throw new AiError('Azure rate limit reached. Wait a minute and try again.');
   if (!r.ok) throw new AiError(`Azure error (${r.status}): ${d.error?.message || 'unknown'}`);
   const text = d.choices?.[0]?.message?.content || '';
+  if (d.choices?.[0]?.finish_reason === 'length') { console.warn('[wren] azure answer cut (length)'); throw new AiError('This part is too big for Wren to rewrite in one go. Select a smaller part, or ask for one change at a time.'); }
   if (!text) { console.error('[wren] azure empty answer:', JSON.stringify(d).slice(0, 500)); throw new AiError('Wren could not answer this one. Try rephrasing.'); }
   return { text, usage: { input: d.usage?.prompt_tokens || 0, output: d.usage?.completion_tokens || 0 } };
 }
@@ -204,7 +210,7 @@ export async function wren({ mode, html, instruction, context, style }) {
   const user = prompt({ mode, html, instruction, context, style });
   if (PROVIDER === 'mock' && process.env.AI_MOCK_DELAY_MS) await sleep(Number(process.env.AI_MOCK_DELAY_MS));
   const out = PROVIDER === 'gemini' ? await callGemini(user) : PROVIDER === 'anthropic' ? await callAnthropic(user)
-    : PROVIDER === 'azure' ? await callAzure(user) : callMock(user, { mode, html, instruction });
+    : PROVIDER === 'azure' ? await callAzure(user, SYSTEM, { design: mode === 'block' }) : callMock(user, { mode, html, instruction });
   return { ...parseAnswer(out.text), usage: out.usage };
 }
 

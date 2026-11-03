@@ -262,7 +262,7 @@ async function askWren() {
       d = await api(`/wren/${start.job}`);
       if (d.status === 'done') break;
       if (d.status === 'error') throw new Error(d.error);
-      if (Date.now() - t0 > 120000) throw new Error('Wren took too long. Try again or select a smaller part.');
+      if (Date.now() - t0 > 200000) throw new Error('Wren took too long. Try again or select a smaller part.');
       go.textContent = `Wren is working (${Math.round((Date.now() - t0) / 1000)}s) `;
     }
     $('#undo').disabled = !d.undo; state.meta.dirty = true; setStatus();

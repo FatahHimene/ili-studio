@@ -70,6 +70,10 @@ export function sanitizeBlock(fragment) {
   root.find('*').each((_, el) => {
     const $el = $(el);
     if (BLOCK_BANNED.has(el.tagName)) { $el.remove(); return; }
+    if (el.tagName === 'style') {
+      const css = $el.text();
+      if (css.length > 20000 || /@import|expression\s*\(|javascript:|behavior\s*:|-moz-binding|<\/?\s*(script|style)/i.test(css)) { $el.remove(); return; }
+    }
     for (const name of Object.keys(el.attribs || {})) {
       const v = el.attribs[name]; const n = name.toLowerCase();
       if (n.startsWith('on') || n === ID_ATTR || n === 'srcdoc' || ((n === 'href' || n === 'src' || n === 'action' || n === 'formaction') && badUrl(v))) $el.removeAttr(name);

@@ -162,7 +162,7 @@ app.post('/api/sites/:id/wren', requireAuth, wrap(async (req, res) => {
   const snapshot = await fs.readFile(file, 'utf8');
   let el;
   try { el = elementForAi(snapshot, elId); } catch (e) { return res.status(400).json({ error: e.message }); }
-  if (el.html.length > 30000) return res.status(400).json({ error: 'This part is too big for Wren. Select a smaller element.' });
+  if (el.html.length > 60000) return res.status(400).json({ error: 'This part is too big for Wren. Select a smaller element.' });
   const mode = req.body.mode === 'text' ? 'text' : 'block';
   const look = typeof req.body.style === 'string' ? req.body.style.slice(0, 400) : '';
 
