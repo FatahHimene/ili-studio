@@ -4,8 +4,51 @@
   "category": "Trades",
   "description": "Technical test theme to check the theme → brief → personalisation pipeline. Not a final design.",
   "version": "0.1.0",
-  "pages": ["index.html", "contact.html"],
+  "pages": [
+    "index.html",
+    "contact.html"
+  ],
   "templates": [
-    { "id": "about", "name": "About us", "file": "templates/about.html", "path": "about.html" }
+    {
+      "id": "about",
+      "name": "About us",
+      "file": "templates/about.html",
+      "path": "about.html"
+    }
+  ],
+  "palettes": [
+    {
+      "id": "navy",
+      "name": "Navy & amber",
+      "colors": {
+        "--ili-primary": "#1E3A6E",
+        "--ili-accent": "#F4B23E",
+        "--ili-ink": "#16181D",
+        "--ili-bg": "#FFFFFF",
+        "--ili-soft": "#F3F5F9"
+      }
+    },
+    {
+      "id": "forest",
+      "name": "Forest & sand",
+      "colors": {
+        "--ili-primary": "#1F4D3A",
+        "--ili-accent": "#E9C46A",
+        "--ili-ink": "#1B1F1C",
+        "--ili-bg": "#FFFFFF",
+        "--ili-soft": "#F2F5F1"
+      }
+    },
+    {
+      "id": "charcoal",
+      "name": "Charcoal & red",
+      "colors": {
+        "--ili-primary": "#23262B",
+        "--ili-accent": "#E4572E",
+        "--ili-ink": "#16181D",
+        "--ili-bg": "#FFFFFF",
+        "--ili-soft": "#F4F4F2"
+      }
+    }
   ]
 }

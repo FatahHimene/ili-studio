@@ -26,6 +26,8 @@
       <button data-mode="edit" aria-pressed="true">Edit</button>
       <button data-mode="preview" aria-pressed="false">Preview</button>
     </div>
+    <button class="btn btn-sm btn-icon" id="fsBtn" type="button" title="Full-screen preview" aria-label="Full-screen preview">⛶</button>
+    <button class="btn btn-sm" id="colBtn" type="button" hidden title="Change the site's colour palette">Colours</button>
     <div class="right">
       <span class="status" id="status" aria-live="polite">Loading…</span>
       <button class="btn btn-sm" id="undo" title="Undo (Ctrl+Z)" disabled>↶ Undo</button>
@@ -113,6 +115,7 @@
             <label class="sfield"><span>Text colour</span><span class="color"><input type="color" id="sColor" /><input class="input mono" id="sColorHex" maxlength="7" spellcheck="false" /></span></label>
             <label class="sfield"><span>Background</span><span class="color"><input type="color" id="sBg" /><input class="input mono" id="sBgHex" maxlength="7" spellcheck="false" /></span></label>
           </div>
+          <div class="swatches" id="swatches" hidden><span>Site colours</span><div id="swList"></div><small>Click: text colour · Shift + click: background</small></div>
           <div class="sfield">
             <span>Text size <b class="mono" id="sSizeVal"></b></span>
             <input type="range" id="sSize" min="10" max="96" step="1" />
@@ -183,6 +186,16 @@
       </section>
     </aside>
   </div>
+  <button class="btn btn-sm fsexit" id="fsExit" type="button" hidden>✕ Exit full screen</button>
+
+  <div class="pmodal" id="colModal" hidden role="dialog" aria-modal="true" aria-labelledby="colTitle">
+    <div class="psheet pages">
+      <div class="phead"><h2 id="colTitle">Site colours</h2><button class="btn btn-sm" id="colClose" type="button" aria-label="Close">✕</button></div>
+      <p class="muted" style="margin:0">Palettes chosen by the designer for this theme. The whole site changes at once.</p>
+      <div class="palopts" id="colOpts"></div>
+    </div>
+  </div>
+
   <div class="pmodal" id="pgModal" hidden role="dialog" aria-modal="true" aria-labelledby="pgTitle">
     <div class="psheet pages">
       <div class="phead"><h2 id="pgTitle">Pages</h2><button class="btn btn-sm" id="pgClose" type="button" aria-label="Close">✕</button></div>

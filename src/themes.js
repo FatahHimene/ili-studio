@@ -37,9 +37,14 @@ async function readTheme(dir, source) {
     const templates = (Array.isArray(t.templates) ? t.templates : [])
       .filter((x) => x && x.file && fss.existsSync(path.join(dir, x.file)))
       .map((x) => ({ id: String(x.id || path.basename(x.file, '.html')), name: String(x.name || x.id), file: x.file, path: x.path || path.basename(x.file) }));
+    const COLOR = /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%deg]+\))$/i;
+    const palettes = (Array.isArray(t.palettes) ? t.palettes : []).slice(0, 6).map((p, i) => ({
+      id: String(p.id || `p${i + 1}`).replace(/[^a-z0-9-]/gi, '').slice(0, 30) || `p${i + 1}`, name: String(p.name || `Palette ${i + 1}`).slice(0, 40),
+      colors: Object.fromEntries(Object.entries(p.colors || {}).filter(([k, v]) => /^--[a-z0-9-]{1,40}$/i.test(k) && COLOR.test(String(v).trim())).map(([k, v]) => [k, String(v).trim()])),
+    })).filter((p) => Object.keys(p.colors).length);
     return {
       id: t.id, name: String(t.name || t.id), category: String(t.category || 'General'), description: String(t.description || ''),
-      version: String(t.version || '1.0.0'), preview, pages, templates, source, dir,
+      version: String(t.version || '1.0.0'), preview, pages, templates, palettes, source, dir,
     };
   } catch { return null; }
 }
@@ -99,5 +104,19 @@ export async function copyThemeTo(theme, destDir) {
   for (const e of entries) {
     if (skip.has(e.name) || /^preview\.(png|jpe?g|webp)$/i.test(e.name) || e.name.startsWith('.')) continue;
     await fs.cp(path.join(theme.dir, e.name), path.join(destDir, e.name), { recursive: true });
+  }
+}
+
+/** Write a palette (CSS variables) into pages: <style id="ili-palette"> at the end of <head>. */
+export async function applyPalette(dir, pages, palette) {
+  if (!palette || !Object.keys(palette.colors || {}).length) return;
+  const css = `:root{${Object.entries(palette.colors).map(([k, v]) => `${k}:${v}`).join(';')}}`;
+  for (const page of pages) {
+    const f = path.join(dir, page);
+    let html = await fs.readFile(f, 'utf8');
+    html = html.replace(/<style id="ili-palette"[^>]*>[\s\S]*?<\/style>/i, '');
+    const tagStr = `<style id="ili-palette" data-palette="${palette.id}">${css}</style>`;
+    html = /<\/head>/i.test(html) ? html.replace(/<\/head>/i, tagStr + '</head>') : tagStr + html;
+    await fs.writeFile(f, html);
   }
 }

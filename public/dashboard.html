@@ -70,6 +70,16 @@
             <label class="field wide"><span>Who are your customers?</span><input class="input" name="audience" maxlength="200" placeholder="Homeowners and landlords across West Yorkshire" /></label>
             <label class="field"><span>Phone</span><input class="input" name="phone" maxlength="40" placeholder="0113 496 0000" /></label>
             <label class="field"><span>Email</span><input class="input" name="email" type="email" maxlength="120" placeholder="hello@yourbusiness.co.uk" /></label>
+            <fieldset class="wide pres">
+              <legend>Your presentation</legend>
+              <label class="check"><input type="radio" name="writeMode" value="ai" checked /> Let Wren write it from this brief</label>
+              <label class="check"><input type="radio" name="writeMode" value="own" /> I already have my own text</label>
+              <textarea class="input" name="presentation" rows="6" maxlength="2500" hidden placeholder="Paste or write your presentation: who you are, how you work, why customers choose you. Wren will use it word for word and keep the rest of the site consistent with it."></textarea>
+            </fieldset>
+            <fieldset class="wide pals" id="palField" hidden>
+              <legend>Colours</legend>
+              <div class="palopts" id="palOpts"></div>
+            </fieldset>
             <label class="field wide"><span>Anything else Wren should know?</span><textarea class="input" name="extra" rows="3" maxlength="600" placeholder="Family business, Gas Safe registered, free quotes…"></textarea></label>
           </div>
           <p class="muted small">Wren only uses the facts you give here. Phone, email and town are inserted exactly as typed.</p>

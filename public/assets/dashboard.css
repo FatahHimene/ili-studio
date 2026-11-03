@@ -21,7 +21,6 @@
 .tgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
 .tpick { border: 1px solid var(--ink); border-radius: var(--r2); background: var(--white); overflow: hidden; display: flex; flex-direction: column; }
 .tpick .thumb { height: 170px; }
-.tpick .thumb iframe { transform: scale(.22); }
 .tpick .meta p { font-size: 14px; color: var(--slate); margin: 0; }
 .tpick .acts { justify-content: space-between; }
 
@@ -37,3 +36,12 @@
 .spin { width: 42px; height: 42px; border: 3px solid var(--grid); border-top-color: var(--ink); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 800px) { .starts, .fgrid { grid-template-columns: 1fr; } }
+
+fieldset { border: 1px solid var(--grid); border-radius: var(--r); padding: 12px 14px 14px; margin: 0; display: grid; gap: 8px; background: var(--white); }
+legend { font-weight: 600; font-size: 13px; padding: 0 4px; }
+.palopts { display: flex; gap: 10px; flex-wrap: wrap; }
+.palopt { display: grid; gap: 6px; border: 1px solid var(--grid); border-radius: var(--r); padding: 8px; cursor: pointer; background: var(--white); font-size: 13px; font-weight: 600; }
+.palopt:has(input:checked) { border-color: var(--ink); box-shadow: 3px 3px 0 var(--signal); }
+.palopt input { position: absolute; opacity: 0; pointer-events: none; }
+.sw { display: flex; } .sw i { width: 26px; height: 26px; border: 1px solid rgba(0,0,0,.12); }
+.sw i:first-child { border-radius: 4px 0 0 4px; } .sw i:last-child { border-radius: 0 4px 4px 0; }

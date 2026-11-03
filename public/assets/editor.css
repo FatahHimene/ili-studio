@@ -95,3 +95,21 @@ input[type=range] { width: 100%; accent-color: var(--ink); }
 .addpage { display: grid; gap: 12px; padding-top: 8px; }
 .addpage h3 { font-size: 16px; }
 .addpage .btn { justify-self: start; }
+
+/* full-screen preview */
+body.fs .bar, body.fs .panel { display: none; }
+body.fs .canvas { padding: 0; background: #fff; }
+body.fs .device { width: 100% !important; border: 0; border-radius: 0; box-shadow: none; }
+.fsexit { position: fixed; top: 12px; right: 12px; z-index: 70; box-shadow: 4px 4px 0 var(--signal); }
+/* palettes & swatches */
+.palopts { display: grid; gap: 10px; }
+.palopt { display: flex; align-items: center; gap: 12px; border: 1px solid var(--grid); border-radius: var(--r); padding: 10px; cursor: pointer; background: var(--white); font-weight: 600; text-align: left; font-size: 14px; }
+.palopt[aria-pressed='true'] { border-color: var(--ink); box-shadow: 3px 3px 0 var(--signal); }
+.sw { display: flex; } .sw i { width: 28px; height: 28px; border: 1px solid rgba(0,0,0,.12); }
+.sw i:first-child { border-radius: 4px 0 0 4px; } .sw i:last-child { border-radius: 0 4px 4px 0; }
+.swatches { display: grid; gap: 6px; font-size: 13px; }
+.swatches > span { font-weight: 600; }
+.swatches small { color: var(--slate); font-size: 11px; }
+#swList { display: flex; flex-wrap: wrap; gap: 6px; }
+#swList button { width: 28px; height: 28px; border-radius: 50%; border: 1px solid rgba(0,0,0,.2); cursor: pointer; padding: 0; }
+#swList button:hover { outline: 2px solid var(--ink); outline-offset: 2px; }

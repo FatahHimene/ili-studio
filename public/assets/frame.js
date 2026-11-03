@@ -2,7 +2,10 @@
 // It highlights elements, lets the user select and edit them, and talks to the editor via postMessage.
 (() => {
   if (window.__ili) return; window.__ili = true;
-  if (location.search.includes('ili-thumb')) return; // dashboard thumbnails: no editing UI
+  if (location.search.includes('ili-thumb')) { // dashboard thumbnails: no editing UI, no scrollbars
+    const st = document.createElement('style'); st.textContent = 'html,body{overflow:hidden!important;scrollbar-width:none}html::-webkit-scrollbar{display:none}';
+    document.head.appendChild(st); return;
+  }
   const ID = 'data-ili-id';
   const INLINE = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'S', 'BR', 'SPAN', 'A', 'SMALL', 'SUP', 'SUB', 'MARK', 'CODE', 'ABBR', 'TIME', 'IMG', 'SVG']);
   const post = (msg) => parent.postMessage({ ili: true, ...msg }, '*');

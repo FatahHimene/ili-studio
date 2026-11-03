@@ -27,7 +27,7 @@ async function load() {
     const el = document.createElement('article');
     el.className = 'card';
     el.innerHTML = `
-      <a class="thumb" href="/editor/${s.id}" aria-label="Edit ${esc(s.name)}"><iframe loading="lazy" sandbox="allow-scripts" tabindex="-1" title=""></iframe></a>
+      <a class="thumb" href="/editor/${s.id}" aria-label="Edit ${esc(s.name)}"><iframe loading="lazy" sandbox="allow-scripts" tabindex="-1" title="" scrolling="no"></iframe></a>
       <div class="meta"><h3>${esc(s.name)}</h3>
         <div class="facts">${status}<span>${s.pages.length} page${s.pages.length > 1 ? 's' : ''}</span>${origin}<span>· edited ${ago(s.updatedAt)}</span></div></div>
       <div class="acts">
@@ -89,7 +89,7 @@ function renderThemes() {
   const list = themes.filter((t) => cat === 'All' || t.category === cat);
   $('#tgrid').innerHTML = list.length ? list.map((t) => `
     <article class="tpick">
-      <a class="thumb" href="/theme-files/${t.id}/index.html" target="_blank" rel="noopener" aria-label="Preview ${esc(t.name)}">${t.preview ? `<img src="/theme-files/${t.id}/${esc(t.preview)}" alt="">` : `<iframe loading="lazy" sandbox="allow-scripts" tabindex="-1" title="" src="/theme-files/${t.id}/index.html"></iframe>`}</a>
+      <a class="thumb" href="/theme-files/${t.id}/index.html" target="_blank" rel="noopener" aria-label="Preview ${esc(t.name)}">${t.preview ? `<img src="/theme-files/${t.id}/${esc(t.preview)}" alt="">` : `<iframe loading="lazy" sandbox="allow-scripts" tabindex="-1" title="" scrolling="no" src="/theme-files/${t.id}/index.html"></iframe>`}</a>
       <div class="meta"><h3>${esc(t.name)}</h3><div class="facts"><span class="tag">${esc(t.category)}</span><span>${t.pages.length} pages</span></div><p>${esc(t.description)}</p></div>
       <div class="acts"><a class="btn btn-sm" href="/theme-files/${t.id}/index.html" target="_blank" rel="noopener">Preview ↗</a><button class="btn btn-sm btn-primary pick" data-id="${esc(t.id)}" type="button">Use this theme →</button></div>
     </article>`).join('') : '<p class="muted">No themes yet. Add one in Themes.</p>';
@@ -99,9 +99,15 @@ $('#tgrid').addEventListener('click', (e) => {
   const b = e.target.closest('.pick'); if (!b) return;
   chosen = themes.find((t) => t.id === b.dataset.id);
   $('#chosen').innerHTML = `<span class="tag tag-live">Theme</span><b>${esc(chosen.name)}</b><span class="muted">${esc(chosen.category)}</span>`;
+  const pals = chosen.palettes || [];
+  $('#palField').hidden = pals.length < 2;
+  $('#palOpts').innerHTML = pals.map((p, i) => `<label class="palopt"><input type="radio" name="palette" value="${esc(p.id)}" ${i === 0 ? 'checked' : ''} /><span class="sw">${Object.values(p.colors).slice(0, 5).map((c) => `<i style="background:${esc(c)}"></i>`).join('')}</span>${esc(p.name)}</label>`).join('');
   step('brief'); $('#stepBrief').elements.business.focus();
 });
 $('#back').onclick = () => step('theme');
+$('#stepBrief').addEventListener('change', (e) => {
+  if (e.target.name === 'writeMode') { const ta = $('#stepBrief').elements.presentation; ta.hidden = e.target.value !== 'own'; if (!ta.hidden) ta.focus(); }
+});
 $('#fromTheme').onclick = async () => {
   modal.hidden = false; step('theme');
   const r = await fetch('/api/themes'); themes = await r.json(); renderThemes();
@@ -113,10 +119,12 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.h
 
 $('#stepBrief').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const brief = Object.fromEntries(new FormData(e.target).entries());
+  const data = Object.fromEntries(new FormData(e.target).entries());
+  const { palette, ...brief } = data;
+  if (brief.writeMode === 'own' && !String(brief.presentation || '').trim()) { toast('Write your presentation, or let Wren write it', true); return; }
   step('work');
   try {
-    const r = await fetch('/api/sites/from-theme', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme: chosen.id, brief }) });
+    const r = await fetch('/api/sites/from-theme', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme: chosen.id, brief, palette }) });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || 'Could not create the site');
     const t0 = Date.now();
@@ -132,4 +140,14 @@ $('#stepBrief').addEventListener('submit', async (e) => {
   } catch (err) { toast(esc(err.message), true); step('brief'); }
 });
 
+// ---- thumbnails: scale the site preview to the card width ------------------------------------
+function fitThumbs() {
+  document.querySelectorAll('.thumb').forEach((t) => {
+    const f = t.querySelector('iframe'); if (!f) return;
+    const w = t.clientWidth, h = t.clientHeight; const scale = w / 1280;
+    f.style.width = '1280px'; f.style.height = `${Math.ceil(h / scale)}px`; f.style.transform = `scale(${scale})`;
+  });
+}
+new ResizeObserver(fitThumbs).observe(document.body);
+new MutationObserver(fitThumbs).observe(document.body, { childList: true, subtree: true });
 load();

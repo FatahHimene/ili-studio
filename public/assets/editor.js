@@ -297,11 +297,7 @@ document.querySelectorAll('[data-dev]').forEach((b) => b.onclick = () => {
   document.querySelectorAll('[data-dev]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
   $('#device').dataset.dev = b.dataset.dev;
 });
-document.querySelectorAll('[data-mode]').forEach((b) => b.onclick = () => {
-  document.querySelectorAll('[data-mode]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-  state.mode = b.dataset.mode; tell({ cmd: 'mode', mode: state.mode });
-  if (state.mode !== 'edit') show(null);
-});
+document.querySelectorAll('[data-mode]').forEach((b) => b.onclick = () => setMode(b.dataset.mode));
 $('#siteName').onchange = async (e) => {
   const name = e.target.value.trim(); if (!name) { e.target.value = state.meta.name; return; }
   try { const d = await api('', { method: 'PATCH', body: JSON.stringify({ name }) }); state.meta.name = d.name; document.title = `${d.name} · ili studio`; } catch (err) { toast(esc(err.message), true); }
@@ -433,5 +429,54 @@ $('#pGrid').onclick = async (e) => {
   } catch (err) { toast(esc(err.message), true); }
   finally { b.classList.remove('busy'); }
 };
+
+// ---- full-screen preview ----------------------------------------------------------------------
+function setMode(mode) {
+  document.querySelectorAll('[data-mode]').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.mode === mode)));
+  state.mode = mode; tell({ cmd: 'mode', mode }); if (mode !== 'edit') show(null);
+}
+function enterFs() {
+  state.fsPrevMode = state.mode; setMode('preview');
+  document.body.classList.add('fs'); $('#fsExit').hidden = false;
+  document.documentElement.requestFullscreen?.().catch(() => {});
+}
+function exitFs() {
+  document.body.classList.remove('fs'); $('#fsExit').hidden = true;
+  if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+  setMode(state.fsPrevMode || 'edit');
+}
+$('#fsBtn').onclick = enterFs;
+$('#fsExit').onclick = exitFs;
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.body.classList.contains('fs')) exitFs(); });
+document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && document.body.classList.contains('fs')) exitFs(); });
+
+// ---- palettes and colour swatches ---------------------------------------------------------------
+const pal = { list: [], current: null, swatches: [] };
+async function loadPalettes() {
+  try { Object.assign(pal, await api('/palettes')); } catch { return; }
+  $('#colBtn').hidden = pal.palettes.length < 2;
+  $('#swatches').hidden = !pal.swatches.length;
+  $('#swList').innerHTML = pal.swatches.map((c) => `<button type="button" style="background:${esc(c)}" title="${esc(c)}" data-c="${esc(c)}"></button>`).join('');
+}
+$('#swList').onclick = (e) => {
+  const b = e.target.closest('button[data-c]'); if (!b || !state.sel) return;
+  const c = b.dataset.c;
+  if (e.shiftKey) { $('#sBgHex').value = c; live({ 'background-color': c }); } else { $('#sColorHex').value = c; live({ color: c }); }
+};
+$('#colBtn').onclick = () => {
+  $('#colModal').hidden = false;
+  $('#colOpts').innerHTML = pal.palettes.map((p) => `<button type="button" class="palopt" data-p="${esc(p.id)}" aria-pressed="${p.id === pal.current}"><span class="sw">${Object.values(p.colors).slice(0, 5).map((c) => `<i style="background:${esc(c)}"></i>`).join('')}</span>${esc(p.name)}</button>`).join('');
+};
+$('#colClose').onclick = () => { $('#colModal').hidden = true; };
+$('#colModal').addEventListener('click', (e) => { if (e.target === $('#colModal')) $('#colModal').hidden = true; });
+$('#colOpts').onclick = async (e) => {
+  const b = e.target.closest('[data-p]'); if (!b) return;
+  try {
+    await api('/palette', { method: 'POST', body: JSON.stringify({ palette: b.dataset.p }) });
+    state.meta.dirty = true; setStatus(); await loadPalettes(); $('#colModal').hidden = true;
+    state.reselect = state.sel?.id; loadFrame(); toast('Colours updated');
+  } catch (err) { toast(esc(err.message), true); }
+};
+loadPalettes();
 
 init().catch((e) => toast(esc(e.message), true));

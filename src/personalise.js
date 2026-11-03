@@ -16,6 +16,9 @@ export function cleanBrief(b = {}) {
     business: s(b.business, 80), trade: s(b.trade, 80), town: s(b.town, 80), services: s(b.services, 400),
     audience: s(b.audience, 200), tone: s(b.tone, 40) || 'friendly', phone: s(b.phone, 40), email: s(b.email, 120),
     address: s(b.address, 200), extra: s(b.extra, 600),
+    // the owner's own presentation, used word for word (paragraph breaks kept)
+    presentation: b.writeMode === 'own' ? String(b.presentation ?? '').replace(/\r/g, '').replace(/\n{3,}/g, '\n\n').trim().slice(0, 2500) : '',
+    writeMode: b.writeMode === 'own' && String(b.presentation ?? '').trim() ? 'own' : 'ai',
   };
 }
 
@@ -31,6 +34,7 @@ async function collectSlots(dir, pages) {
       const isImg = el.tagName === 'img';
       slots.set(key, {
         key, type: isImg ? 'image' : ($el.attr('data-ili-type') || 'text'),
+        presentation: $el.attr('data-ili-type') === 'presentation',
         example: isImg ? ($el.attr('alt') || '') : $el.text().replace(/\s+/g, ' ').trim().slice(0, 200),
         hint: $el.attr('data-ili-hint') || '', max: Number($el.attr('data-ili-max')) || 0,
         query: $el.attr('data-ili-query') || '', orientation: $el.attr('data-ili-orientation') || 'horizontal',
@@ -53,12 +57,17 @@ For each image slot, give a short English photo search query (2–4 words, concr
  */
 export async function personalise(dir, pages, brief, { log = () => {} } = {}) {
   const slots = await collectSlots(dir, pages);
-  const textSlots = slots.filter((s) => s.type === 'text');
+  const ownText = brief.writeMode === 'own' && brief.presentation;
+  // presentation slots: the owner's words if given, otherwise Wren writes them like any text
+  const textSlots = slots.filter((s) => s.type === 'text' || (s.type === 'presentation' && !ownText))
+    .map((s) => (s.type === 'presentation' ? { ...s, hint: s.hint || 'Presentation of the business: who they are, how they work, why choose them (3-5 sentences)' } : s));
   const imageSlots = slots.filter((s) => s.type === 'image').slice(0, MAX_IMAGES);
   log(`slots: ${textSlots.length} text, ${imageSlots.length} images`);
 
+  const { presentation, writeMode, ...facts } = brief;
   const user = `Brief:
-${JSON.stringify(brief, null, 2)}
+${JSON.stringify(facts, null, 2)}
+${ownText ? `\nThe owner's own presentation (source of truth: stay consistent with it, reuse its facts and voice, do not contradict it):\n<<<\n${presentation}\n>>>\n` : ''}
 
 Text slots (key, example text from the theme, hint, max characters):
 ${textSlots.map((s) => `- ${s.key} | example: "${s.example}" | hint: ${s.hint || '-'} | max: ${s.max || Math.max(40, s.example.length * 2)}`).join('\n')}
@@ -108,6 +117,13 @@ Return: {"text": {"<slot key>": "<copy>", ...}, "images": {"<slot key>": {"query
         return;
       }
       const type = $el.attr('data-ili-type') || 'text';
+      if (type === 'presentation' && ownText) {
+        const paras = presentation.split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean);
+        $el.text(paras[0] || presentation);
+        let last = $el; // extra paragraphs become sibling elements of the same kind
+        for (const para of paras.slice(1)) { const c = $el.clone().removeAttr('data-ili-slot').removeAttr('data-ili-type').removeAttr('data-ili-id').text(para); last.after(c); last = c; }
+        return;
+      }
       if (FACT_TYPES.has(type)) {
         const v = fact(type);
         if (!v) {

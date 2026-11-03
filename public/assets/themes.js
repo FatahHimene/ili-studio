@@ -13,12 +13,13 @@ async function load() {
   for (const t of themes) {
     const el = document.createElement('article');
     el.className = 'card tcard';
-    const thumb = t.preview ? `<img src="/theme-files/${t.id}/${esc(t.preview)}" alt="" loading="lazy">` : `<iframe loading="lazy" sandbox="allow-scripts" tabindex="-1" title="" src="/theme-files/${t.id}/index.html"></iframe>`;
+    const thumb = t.preview ? `<img src="/theme-files/${t.id}/${esc(t.preview)}" alt="" loading="lazy">` : `<iframe loading="lazy" sandbox="allow-scripts" tabindex="-1" title="" scrolling="no" src="/theme-files/${t.id}/index.html"></iframe>`;
     el.innerHTML = `
       <a class="thumb" href="/theme-files/${t.id}/index.html" target="_blank" rel="noopener" aria-label="Preview ${esc(t.name)}">${thumb}</a>
       <div class="meta"><h3>${esc(t.name)}</h3>
         <div class="facts"><span class="tag">${esc(t.category)}</span><span>v${esc(t.version)}</span><span>· ${t.pages.length} page${t.pages.length > 1 ? 's' : ''}</span><span>· ${t.source}</span></div>
         <p>${esc(t.description)}</p>
+        ${(t.palettes || []).length ? `<div class="facts">${t.palettes.map((p) => `<span title="${esc(p.name)}" style="display:inline-flex">${Object.values(p.colors).slice(0, 4).map((c) => `<i style="width:14px;height:14px;display:inline-block;background:${esc(c)};border:1px solid rgba(0,0,0,.12)"></i>`).join('')}</span>`).join(' ')}</div>` : ''}
         ${t.templates.length ? `<div class="tpls">${t.templates.map((x) => `<span class="tag">+ ${esc(x.name)}</span>`).join('')}</div>` : ''}
       </div>
       <div class="acts">
@@ -45,7 +46,15 @@ async function upload(file) {
   const d = await r.json().catch(() => ({}));
   $('#status').textContent = '';
   if (!r.ok) return toast(esc(d.error || 'Install failed'), true);
-  toast(`Theme “${esc(d.name)}” installed`); load();
+  toast(`Theme “${esc(d.name)}” installed`); function fitThumbs() {
+  document.querySelectorAll('.thumb').forEach((t) => {
+    const f = t.querySelector('iframe'); if (!f) return;
+    const scale = t.clientWidth / 1280; f.style.width = '1280px'; f.style.height = `${Math.ceil(t.clientHeight / scale)}px`; f.style.transform = `scale(${scale})`;
+  });
+}
+new ResizeObserver(fitThumbs).observe(document.body);
+new MutationObserver(fitThumbs).observe(document.body, { childList: true, subtree: true });
+load();
 }
 const up = $('#up');
 $('#choose').onclick = () => $('#file').click();
@@ -53,4 +62,12 @@ $('#file').onchange = (e) => { upload(e.target.files[0]); e.target.value = ''; }
 ['dragenter', 'dragover'].forEach((t) => up.addEventListener(t, (e) => { e.preventDefault(); up.classList.add('over'); }));
 ['dragleave', 'drop'].forEach((t) => up.addEventListener(t, (e) => { e.preventDefault(); up.classList.remove('over'); }));
 up.addEventListener('drop', (e) => upload(e.dataTransfer.files[0]));
+function fitThumbs() {
+  document.querySelectorAll('.thumb').forEach((t) => {
+    const f = t.querySelector('iframe'); if (!f) return;
+    const scale = t.clientWidth / 1280; f.style.width = '1280px'; f.style.height = `${Math.ceil(t.clientHeight / scale)}px`; f.style.transform = `scale(${scale})`;
+  });
+}
+new ResizeObserver(fitThumbs).observe(document.body);
+new MutationObserver(fitThumbs).observe(document.body, { childList: true, subtree: true });
 load();

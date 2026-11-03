@@ -13,7 +13,7 @@ import * as cheerio from 'cheerio';
 import { applyOps, injectEditor, strip, title, elementForAi, STYLE_OK } from './html.js';
 import { wren, aiStatus, AiError, ping, askJson } from './ai.js';
 import { searchPhotos, importPhoto, saveImage, bankStatus, ImageError } from './images.js';
-import { listThemes, getTheme, publicTheme, installTheme, removeTheme, copyThemeTo } from './themes.js';
+import { listThemes, getTheme, publicTheme, installTheme, removeTheme, copyThemeTo, applyPalette } from './themes.js';
 import { personalise, cleanBrief } from './personalise.js';
 import { requireAuth, login, logout, isAuthed, frameToken, checkFrameToken } from './auth.js';
 
@@ -302,6 +302,28 @@ async function editPages(meta, fn) {
   }
 }
 
+/** Colour palettes the site can switch between (from its theme) + colours used, for the style swatches. */
+app.get('/api/sites/:id/palettes', requireAuth, wrap(async (req, res) => {
+  const meta = await store.readMeta(req.params.id);
+  const theme = meta.theme ? await getTheme(meta.theme.id) : null;
+  const palettes = theme?.palettes || [];
+  const current = palettes.find((p) => p.id === meta.palette) || null;
+  const swatches = current ? [...new Set(Object.values(current.colors))] : (await sitePalette(store.draftDir(meta.id))).slice(0, 8);
+  res.json({ palettes, current: current?.id || null, swatches });
+}));
+
+/** Switch the site's palette. Body: { palette } */
+app.post('/api/sites/:id/palette', requireAuth, wrap(async (req, res) => {
+  const meta = await store.readMeta(req.params.id);
+  const theme = meta.theme ? await getTheme(meta.theme.id) : null;
+  const pal = theme?.palettes.find((p) => p.id === req.body.palette);
+  if (!pal) return res.status(404).json({ error: 'Palette not found' });
+  await applyPalette(store.draftDir(meta.id), meta.pages, pal);
+  meta.palette = pal.id; meta.updatedAt = new Date().toISOString(); meta.dirty = true;
+  await store.writeMeta(meta.id, meta);
+  res.json({ ok: true, current: pal.id });
+}));
+
 /** Templates the site can use (from its theme). */
 app.get('/api/sites/:id/templates', requireAuth, wrap(async (req, res) => {
   const meta = await store.readMeta(req.params.id);
@@ -341,6 +363,10 @@ app.post('/api/sites/:id/pages', requireAuth, wrap(async (req, res) => {
   }
   await fs.writeFile(store.safeJoin(dir, file), tag(html));
   meta.pages.push(file);
+  if (from === 'template' && meta.palette) {
+    const th = await getTheme(meta.theme.id); const pal = th?.palettes.find((p) => p.id === meta.palette);
+    if (pal) await applyPalette(dir, [file], pal);
+  }
   if (from === 'template' && meta.brief) {
     try { await personalise(dir, [file], meta.brief); } catch (e) { console.warn('[pages] template personalisation skipped:', e.message); }
   }
@@ -469,10 +495,12 @@ app.post('/api/sites/from-theme', requireAuth, wrap(async (req, res) => {
   const id = store.newId();
   await fs.mkdir(store.draftDir(id), { recursive: true });
   await copyThemeTo(theme, store.draftDir(id));
+  const palette = theme.palettes.find((p) => p.id === req.body.palette) || theme.palettes[0] || null;
+  if (palette) await applyPalette(store.draftDir(id), theme.pages, palette);
   let slug = store.slugify(brief.business);
   for (let n = 2; await store.slugTaken(slug); n++) slug = `${store.slugify(brief.business)}-${n}`;
   const now = new Date().toISOString();
-  const meta = { id, name: brief.business, slug, pages: theme.pages, theme: { id: theme.id, version: theme.version }, brief, createdAt: now, updatedAt: now, publishedAt: null, source: 'theme:' + theme.id, personalising: true };
+  const meta = { id, name: brief.business, slug, pages: theme.pages, theme: { id: theme.id, version: theme.version }, palette: palette?.id || null, brief, createdAt: now, updatedAt: now, publishedAt: null, source: 'theme:' + theme.id, personalising: true };
   await store.writeMeta(id, meta);
 
   const jobId = store.newId();
