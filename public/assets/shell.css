@@ -31,3 +31,4 @@ main { max-width: 1200px; margin: 0 auto; padding: 48px 24px 96px; }
 .sheet-body { padding: 22px; }
 .steps { font: 500 12px var(--mono); color: var(--slate); letter-spacing: .04em; }
 .steps b { color: var(--ink); }
+.card.is-hidden { opacity: .55; }

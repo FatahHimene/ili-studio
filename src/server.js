@@ -13,7 +13,7 @@ import * as cheerio from 'cheerio';
 import { applyOps, injectEditor, strip, title, elementForAi, STYLE_OK } from './html.js';
 import { wren, aiStatus, AiError, ping, askJson } from './ai.js';
 import { searchPhotos, importPhoto, saveImage, bankStatus, ImageError } from './images.js';
-import { listThemes, getTheme, publicTheme, installTheme, removeTheme, copyThemeTo, applyPalette } from './themes.js';
+import { listThemes, getTheme, publicTheme, installTheme, removeTheme, restoreTheme, copyThemeTo, applyPalette } from './themes.js';
 import { personalise, cleanBrief } from './personalise.js';
 import { requireAuth, login, logout, isAuthed, frameToken, checkFrameToken } from './auth.js';
 
@@ -464,12 +464,16 @@ app.post('/api/sites/:id/images/suggest', requireAuth, wrap(async (req, res) => 
 
 // ---- themes ------------------------------------------------------------------------------------
 app.get('/themes', requireAuth, (req, res) => send(res, 'themes.html'));
-app.get('/api/themes', requireAuth, wrap(async (req, res) => res.json((await listThemes()).map(publicTheme))));
+app.get('/api/themes', requireAuth, wrap(async (req, res) => res.json((await listThemes({ includeHidden: req.query.all === '1' })).map(publicTheme))));
 app.post('/api/themes', requireAuth, upload.single('file'), wrap(async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Choose a theme .zip file' });
   try { res.json(publicTheme(await installTheme(req.file.path, req.file.originalname))); }
   catch (e) { if (e instanceof ImportError) return res.status(400).json({ error: e.message }); throw e; }
   finally { fs.rm(req.file.path, { force: true }); }
+}));
+app.post('/api/themes/:id/restore', requireAuth, wrap(async (req, res) => {
+  try { await restoreTheme(req.params.id); res.json({ ok: true }); }
+  catch (e) { if (e instanceof ImportError) return res.status(400).json({ error: e.message }); throw e; }
 }));
 app.delete('/api/themes/:id', requireAuth, wrap(async (req, res) => {
   try { await removeTheme(req.params.id); res.json({ ok: true }); }
@@ -489,7 +493,7 @@ app.get('/theme-files/:id/{*path}', wrap(async (req, res) => {
 /** Create a site from a theme and personalise it from the brief (background job). Body: { theme, brief } */
 app.post('/api/sites/from-theme', requireAuth, wrap(async (req, res) => {
   const theme = await getTheme(String(req.body.theme || ''));
-  if (!theme) return res.status(404).json({ error: 'Theme not found' });
+  if (!theme || theme.hidden) return res.status(404).json({ error: 'Theme not found' });
   const brief = cleanBrief(req.body.brief);
   if (!brief.business || !brief.trade) return res.status(400).json({ error: 'Business name and trade are required' });
   const id = store.newId();

@@ -7,30 +7,36 @@ function toast(msg, err = false) {
 const grid = $('#grid');
 
 async function load() {
-  const r = await fetch('/api/themes'); if (r.status === 401) { location.href = '/login'; return; }
+  const r = await fetch('/api/themes?all=1'); if (r.status === 401) { location.href = '/login'; return; }
   const themes = await r.json();
   grid.querySelectorAll('.tcard').forEach((c) => c.remove());
   for (const t of themes) {
     const el = document.createElement('article');
-    el.className = 'card tcard';
+    el.className = 'card tcard' + (t.hidden ? ' is-hidden' : '');
     const thumb = t.preview ? `<img src="/theme-files/${t.id}/${esc(t.preview)}" alt="" loading="lazy">` : `<iframe loading="lazy" sandbox="allow-scripts" tabindex="-1" title="" scrolling="no" src="/theme-files/${t.id}/index.html"></iframe>`;
     el.innerHTML = `
       <a class="thumb" href="/theme-files/${t.id}/index.html" target="_blank" rel="noopener" aria-label="Preview ${esc(t.name)}">${thumb}</a>
       <div class="meta"><h3>${esc(t.name)}</h3>
-        <div class="facts"><span class="tag">${esc(t.category)}</span><span>v${esc(t.version)}</span><span>· ${t.pages.length} page${t.pages.length > 1 ? 's' : ''}</span><span>· ${t.source}</span></div>
+        <div class="facts"><span class="tag">${esc(t.category)}</span><span>v${esc(t.version)}</span><span>· ${t.pages.length} page${t.pages.length > 1 ? 's' : ''}</span><span>· ${t.source}</span>${t.hidden ? '<span class="tag">Hidden</span>' : ''}</div>
         <p>${esc(t.description)}</p>
         ${(t.palettes || []).length ? `<div class="facts">${t.palettes.map((p) => `<span title="${esc(p.name)}" style="display:inline-flex">${Object.values(p.colors).slice(0, 4).map((c) => `<i style="width:14px;height:14px;display:inline-block;background:${esc(c)};border:1px solid rgba(0,0,0,.12)"></i>`).join('')}</span>`).join(' ')}</div>` : ''}
         ${t.templates.length ? `<div class="tpls">${t.templates.map((x) => `<span class="tag">+ ${esc(x.name)}</span>`).join('')}</div>` : ''}
       </div>
       <div class="acts">
         <a class="btn btn-sm" href="/theme-files/${t.id}/index.html" target="_blank" rel="noopener">Preview ↗</a>
-        ${t.source === 'uploaded' ? `<button class="btn btn-sm btn-danger del" data-id="${esc(t.id)}">Delete</button>` : '<span class="muted" style="margin-left:auto;font-size:12px">Built-in</span>'}
+        ${t.hidden ? `<button class="btn btn-sm restore" data-id="${esc(t.id)}">Restore</button>` : `<button class="btn btn-sm btn-danger del" data-id="${esc(t.id)}">Delete</button>`}
       </div>`;
     grid.appendChild(el);
   }
 }
 
 grid.addEventListener('click', async (e) => {
+  const rb = e.target.closest('.restore');
+  if (rb) {
+    const r = await fetch(`/api/themes/${rb.dataset.id}/restore`, { method: 'POST' });
+    if (r.ok) { toast('Theme restored'); load(); } else toast('Could not restore', true);
+    return;
+  }
   const b = e.target.closest('.del'); if (!b) return;
   if (b.dataset.confirm !== '1') { b.dataset.confirm = '1'; b.textContent = 'Click to confirm'; setTimeout(() => { b.dataset.confirm = ''; b.textContent = 'Delete'; }, 3000); return; }
   const r = await fetch(`/api/themes/${b.dataset.id}`, { method: 'DELETE' });

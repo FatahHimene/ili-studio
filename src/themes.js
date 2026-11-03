@@ -25,6 +25,10 @@ const BUILTIN = path.join(__dirname, '..', 'themes');
 const UPLOADED = path.join(DATA_DIR, 'themes');
 
 const ID_RE = /^[a-z0-9][a-z0-9-]{1,39}$/;
+// Built-in themes live in the app image and cannot be removed from disk: deleting one hides it instead.
+const HIDDEN = path.join(DATA_DIR, 'themes-hidden.json');
+async function readHidden() { try { return new Set(JSON.parse(await fs.readFile(HIDDEN, 'utf8'))); } catch { return new Set(); } }
+async function writeHidden(set) { await fs.mkdir(DATA_DIR, { recursive: true }); await fs.writeFile(HIDDEN, JSON.stringify([...set])); }
 
 async function readTheme(dir, source) {
   try {
@@ -49,7 +53,8 @@ async function readTheme(dir, source) {
   } catch { return null; }
 }
 
-export async function listThemes() {
+export async function listThemes({ includeHidden = false } = {}) {
+  const hidden = await readHidden();
   const out = new Map();
   for (const [base, source] of [[BUILTIN, 'built-in'], [UPLOADED, 'uploaded']]) {
     const ids = await fs.readdir(base).catch(() => []);
@@ -58,12 +63,17 @@ export async function listThemes() {
       if (t) out.set(t.id, t); // an uploaded theme with the same id replaces the built-in one
     }
   }
+  for (const [id, t] of out) {
+    if (!hidden.has(id)) continue;
+    if (includeHidden) t.hidden = true; else out.delete(id);
+  }
   return [...out.values()].sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
 }
 
 export async function getTheme(id) {
   if (!ID_RE.test(String(id))) return null;
-  return (await listThemes()).find((t) => t.id === id) || null;
+  // hidden themes still resolve, so sites already made from them keep their palettes and page templates
+  return (await listThemes({ includeHidden: true })).find((t) => t.id === id) || null;
 }
 
 export const publicTheme = ({ dir, ...t }) => t;
@@ -87,14 +97,27 @@ export async function installTheme(filePath, originalName) {
   await writeFiles(own, tmp);
   await fs.rm(dest, { recursive: true, force: true });
   await fs.rename(tmp, dest);
+  const hidden = await readHidden();
+  if (hidden.delete(t.id)) await writeHidden(hidden); // uploading a theme again makes it visible
   return readTheme(dest, 'uploaded');
 }
 
+/** Delete an uploaded theme, and hide any built-in theme with the same id (sites made from it keep working). */
 export async function removeTheme(id) {
-  const t = await getTheme(id);
+  if (!ID_RE.test(String(id))) throw new ImportError('Theme not found');
+  const t = (await listThemes({ includeHidden: true })).find((x) => x.id === id);
   if (!t) throw new ImportError('Theme not found');
-  if (t.source !== 'uploaded') throw new ImportError('Built-in themes cannot be deleted here');
-  await fs.rm(t.dir, { recursive: true, force: true });
+  await fs.rm(path.join(UPLOADED, id), { recursive: true, force: true });
+  if (fss.existsSync(path.join(BUILTIN, id, 'theme.json'))) {
+    const hidden = await readHidden(); hidden.add(id); await writeHidden(hidden);
+  }
+}
+
+/** Show a hidden built-in theme again. */
+export async function restoreTheme(id) {
+  const hidden = await readHidden();
+  if (!hidden.delete(String(id))) throw new ImportError('Theme not found');
+  await writeHidden(hidden);
 }
 
 /** Copy a theme's site files (not templates, previews or theme.json) into a site's draft folder. */
