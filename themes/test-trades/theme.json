@@ -2,6 +2,15 @@
   "id": "test-trades",
   "name": "Test · Trades",
   "category": "Trades",
+  "subcategory": "Plumbing & heating",
+  "tags": [
+    "plumber",
+    "heating engineer",
+    "boiler",
+    "electrician",
+    "builder",
+    "handyman"
+  ],
   "description": "Technical test theme to check the theme → brief → personalisation pipeline. Not a final design.",
   "version": "0.1.0",
   "pages": [
