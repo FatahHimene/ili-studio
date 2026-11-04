@@ -20,6 +20,7 @@ import * as users from './users.js';
 import { prepareForms, receive, emailText, listMessages, updateMessage, deleteMessage, thanksPage } from './forms.js';
 import { sendMail, mailEnabled } from './mail.js';
 import { PLATFORMS, cleanReviews, renderReviews, hasReviewsBlock } from './reviews.js';
+import { seoPage, seoFiles } from './seo.js';
 import { PLANS, planOf, COSTS, FREE_DOMAIN, RESERVED } from './plans.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -624,8 +625,9 @@ const freeUrl = (sub) => `https://${sub}.${FREE_DOMAIN}/`;
 /** Which pages a plan publishes: the home page first, then the others in order, up to the plan limit. */
 function publishable(meta, user) {
   const plan = user.role === 'admin' ? { pages: null } : planOf(user);
-  const ordered = ['index.html', ...meta.pages.filter((p) => p !== 'index.html')].filter((p) => meta.pages.includes(p));
-  const live = plan.pages ? ordered.slice(0, plan.pages) : ordered;
+  const extra = meta.pages.filter((p) => /^thanks\.html?$/i.test(p)); // the form's thank-you page never counts as a page
+  const ordered = ['index.html', ...meta.pages.filter((p) => p !== 'index.html' && !extra.includes(p))].filter((p) => meta.pages.includes(p));
+  const live = [...(plan.pages ? ordered.slice(0, plan.pages) : ordered), ...extra];
   return { live, locked: ordered.filter((p) => !live.includes(p)) };
 }
 
@@ -648,6 +650,7 @@ app.post('/api/sites/:id/publish', requireAuth, wrap(async (req, res) => {
     if (others >= maxLive) return res.status(403).json({ error: `Your ${planOf(req.user).name} plan can have ${maxLive} published site${maxLive > 1 ? 's' : ''}. Unpublish the other one first, or choose a plan.`, code: 'publish_limit' });
   }
   const { live, locked } = publishable(meta, req.user);
+  const seo = [];
   const src = store.draftDir(meta.id);
   const tmp = store.publishedDir(meta.id) + '.tmp';
   await fs.rm(tmp, { recursive: true, force: true });
@@ -659,8 +662,11 @@ app.post('/api/sites/:id/publish', requireAuth, wrap(async (req, res) => {
     if (locked.length) html = unlinkPages(html, page, locked);
     html = prepareForms(html);
     if (req.user.role !== 'admin' && planOf(req.user).id === 'free') html = addBadge(html, sub);
+    const s = seoPage(html, { site: meta, base: freeUrl(sub), page });
+    if (typeof s === 'object') { html = s.html; seo.push(s); }
     await fs.writeFile(f, html);
   }
+  await seoFiles(tmp, freeUrl(sub), seo);
   await fs.rm(store.publishedDir(meta.id), { recursive: true, force: true });
   await fs.rename(tmp, store.publishedDir(meta.id));
   meta.publishedAt = new Date().toISOString(); meta.dirty = false;

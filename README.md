@@ -141,3 +141,9 @@ Les données sont dans `./data` (ou `DATA_DIR`).
 - Dans l'éditeur, le bouton **★ Reviews** (visible si le site a un bloc d'avis) : le client choisit la plateforme (Google, Trustpilot,
   Facebook, Checkatrade, TrustATrader, Yell…), puis ajoute ses avis lui-même (affichés dans le design du thème, avec confirmation
   qu'ils sont authentiques) ou colle le widget officiel de la plateforme (scripts et iframes acceptés uniquement depuis des plateformes connues).
+
+## SEO de base (automatique à la publication)
+
+Titre et description par page, adresse canonique, aperçu de partage (Open Graph / Twitter), données structurées
+LocalBusiness sur l'accueil (à partir du brief), chargement différé des images, `sitemap.xml` et `robots.txt`.
+La page `thanks.html` est en `noindex` et ne compte pas dans la limite de pages.
