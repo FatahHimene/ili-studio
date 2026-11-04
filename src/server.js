@@ -18,6 +18,7 @@ import { listThemes, getTheme, publicTheme, installTheme, removeTheme, restoreTh
 import { personalise, cleanBrief } from './personalise.js';
 import { requireAuth, requireAdmin, login, signup, logout, currentUser, frameToken, checkFrameToken } from './auth.js';
 import * as users from './users.js';
+import { clientIp } from './clientip.js';
 import { prepareForms, receive, emailText, listMessages, updateMessage, deleteMessage, thanksPage } from './forms.js';
 import { sendMail, mailEnabled } from './mail.js';
 import { PLATFORMS, cleanReviews, renderReviews, hasReviewsBlock } from './reviews.js';
@@ -918,7 +919,7 @@ async function handleForm(sub, req, res) {
   res.setHeader('Content-Security-Policy', SANDBOX);
   if (!site) return res.status(404).send('Site not found');
   let r;
-  try { r = await receive(site, req.body, req.ip); }
+  try { r = await receive(site, req.body, clientIp(req)); }
   catch (e) { return res.status(400).type('html').send(thanksPage(site, e.message)); }
   if (!r.spam) {
     const owner = site.owner ? await users.get(site.owner) : null;

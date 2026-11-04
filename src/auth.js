@@ -3,6 +3,7 @@
 // - The owner (admin) signs in with ADMIN_EMAIL (default "admin") + ADMIN_PASSWORD from the environment.
 import crypto from 'node:crypto';
 import * as users from './users.js';
+import { clientIp } from './clientip.js';
 
 const SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 let PASSWORD = process.env.ADMIN_PASSWORD;
@@ -62,7 +63,7 @@ function throttled(key, max, windowMs, lockMs) {
 }
 
 export async function login(req, res, email, password) {
-  if (throttled('login:' + req.ip, 8, 10 * 60 * 1000, 10 * 60 * 1000)) return { ok: false, error: 'Too many attempts. Try again in a few minutes.' };
+  if (throttled('login:' + clientIp(req), 8, 10 * 60 * 1000, 10 * 60 * 1000)) return { ok: false, error: 'Too many attempts. Try again in a few minutes.' };
   const e = users.normEmail(email);
   if (typeof password !== 'string' || !password) return { ok: false, error: 'Wrong email or password' };
   if (e === ADMIN_EMAIL && sameSecret(password, PASSWORD)) {
@@ -82,7 +83,7 @@ export async function signup(req, res, { email, password, name }) {
   if (!users.EMAIL_RE.test(e) || e === ADMIN_EMAIL) return { ok: false, error: 'Enter a valid email address' };
   if (typeof password !== 'string' || password.length < 8) return { ok: false, error: 'Choose a password of at least 8 characters' };
   if (password.length > 200) return { ok: false, error: 'This password is too long' };
-  if (throttled('signup:' + req.ip, 5, 60 * 60 * 1000, 60 * 60 * 1000)) return { ok: false, error: 'Too many new accounts from this connection. Try again later.' };
+  if (throttled('signup:' + clientIp(req), 5, 60 * 60 * 1000, 60 * 60 * 1000)) return { ok: false, error: 'Too many new accounts from this connection. Try again later.' };
   if (await users.byEmail(e)) return { ok: false, error: 'An account already exists with this email. Sign in instead.' };
   const u = await users.create({ email: e, password, name });
   startSession(req, res, u.id);
