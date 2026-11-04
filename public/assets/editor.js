@@ -117,6 +117,9 @@ function show(info) {
   $('#moveUp').disabled = !info.hasPrev; $('#moveDown').disabled = !info.hasNext;
   const root = ['body', 'html', 'main'].includes(info.tag);
   $('#del').disabled = root; $('#dup').disabled = root;
+  $('#qDel').disabled = root; $('#qDup').disabled = root; $('#qUp').disabled = !info.hasPrev; $('#qDown').disabled = !info.hasNext;
+  $('#secBtn').hidden = !info.sectionId;
+  $('#qDel').textContent = 'Delete'; $('#qDel').dataset.confirm = '';
   fillStyle(info.style);
   wrenUi(info);
   $('#noContent').hidden = !!(info.canText || info.kind === 'image' || info.link);
@@ -358,13 +361,34 @@ $('#imgFile').onchange = async (e) => {
 $('#moveUp').onclick = () => ops([{ type: 'move', id: state.sel.id, dir: 'up' }], { reload: true, reselect: state.sel.id });
 $('#moveDown').onclick = () => ops([{ type: 'move', id: state.sel.id, dir: 'down' }], { reload: true, reselect: state.sel.id });
 $('#dup').onclick = () => ops([{ type: 'duplicate', id: state.sel.id }], { reload: true, reselect: (d) => d.results?.[0]?.newId || null }).catch(() => {});
-$('#del').onclick = async (e) => {
+async function removeSel() {
+  if (!state.sel) return;
+  const what = state.sel.name || 'Element';
+  await ops([{ type: 'remove', id: state.sel.id }], { reload: true });
+  show(null);
+  toast(`${esc(what)} deleted · <a href="#" id="tUndoDel">Undo</a>`);
+  setTimeout(() => { const u = document.getElementById('tUndoDel'); if (u) u.onclick = (ev) => { ev.preventDefault(); undo(); }; }, 0);
+}
+const confirmDel = (e) => {
   const b = e.currentTarget;
   if (b.dataset.confirm !== '1') { b.dataset.confirm = '1'; b.textContent = 'Click to confirm'; setTimeout(() => { b.dataset.confirm = ''; b.textContent = 'Delete'; }, 2500); return; }
   b.dataset.confirm = ''; b.textContent = 'Delete';
-  await ops([{ type: 'remove', id: state.sel.id }], { reload: true });
-  show(null);
+  removeSel();
 };
+$('#del').onclick = confirmDel; $('#qDel').onclick = confirmDel;
+$('#qUp').onclick = () => $('#moveUp').click(); $('#qDown').onclick = () => $('#moveDown').click(); $('#qDup').onclick = () => $('#dup').click();
+$('#secBtn').onclick = () => { if (state.sel?.sectionId) tell({ cmd: 'select', id: state.sel.sectionId, scroll: false }); };
+let delArmed = 0;
+function delKey(key) {
+  if (!state.sel || $('#qDel').disabled) return;
+  if (Date.now() - delArmed > 2500) { delArmed = Date.now(); toast(`Press ${esc(key)} again to delete this ${esc((state.sel.name || 'element').toLowerCase())}`); return; }
+  delArmed = 0; removeSel();
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) || document.activeElement === frame) return;
+  e.preventDefault(); delKey(e.key);
+});
 
 // ---- top bar ------------------------------------------------------------------------------
 $('#undo').onclick = undo;
@@ -463,6 +487,7 @@ window.addEventListener('message', (e) => {
     case 'deselect': show(null); break;
     case 'text': ops([{ type: 'html', id: m.id, html: m.html }]).then(() => toast('Text saved')).catch(() => {}); break;
     case 'undo': undo(); break;
+    case 'delkey': delKey(m.key); break;
   }
 });
 

@@ -84,6 +84,10 @@
       link: a ? { id: a.getAttribute(ID), href: a.getAttribute('href') || '', blank: a.getAttribute('target') === '_blank' } : null,
       hasBg: bgImg && bgImg !== 'none',
       parentId: el.parentElement ? target(el.parentElement)?.getAttribute(ID) || null : null,
+      sectionId: (() => { // the page-level block (direct child of body or main) around this element
+        let n = el; while (n.parentElement && !['BODY', 'MAIN', 'HTML'].includes(n.parentElement.tagName)) n = n.parentElement;
+        return n !== el && n.hasAttribute(ID) && !['BODY', 'MAIN', 'HTML'].includes(n.tagName) ? n.getAttribute(ID) : null;
+      })(),
       hasPrev: !!el.previousElementSibling, hasNext: !!el.nextElementSibling,
       style: styleOf(el),
     };
@@ -168,6 +172,7 @@
     if (e.key === 'Escape') select(null);
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); post({ type: 'undo' }); }
     if (e.key === 'Enter' && selected && canText(selected)) { e.preventDefault(); startEdit(selected); }
+    if ((e.key === 'Delete' || e.key === 'Backspace') && selected) { e.preventDefault(); post({ type: 'delkey', key: e.key }); }
   }, true);
   document.addEventListener('focusout', (e) => { if (editing && e.target === editing) finishEdit(true); }, true);
   document.addEventListener('paste', (e) => {

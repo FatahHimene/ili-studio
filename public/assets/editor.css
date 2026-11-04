@@ -121,3 +121,7 @@ body.fs .device { width: 100% !important; border: 0; border-radius: 0; box-shado
 .focal .fdot { position: absolute; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: var(--signal); border: 2px solid var(--ink); pointer-events: none; }
 .posbtns { flex-wrap: wrap; gap: 4px; }
 .posbtns .btn { padding: 5px 8px; font-size: 12px; }
+
+.quick { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 0 14px; border-bottom: 1px solid var(--grid); margin-bottom: 14px; }
+.quick .btn-icon { width: 32px; height: 32px; }
+.quick #qDel { margin-left: auto; }
