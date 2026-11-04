@@ -58,3 +58,10 @@
 .revs .row { display: flex; gap: 12px; align-items: center; }
 .revs .field small { font-weight: 400; }
 @media (max-width: 640px) { .revs .rrow { grid-template-columns: 1fr 1fr; } }
+
+.pub .seobox { display: flex; gap: 14px; align-items: center; padding: 12px 14px; border-radius: var(--r); border: 1px solid var(--grid); background: var(--paper); flex-wrap: wrap; }
+.pub .seobox > div { flex: 1; min-width: 200px; }
+.pub .seobox p { margin: 2px 0 0; font-size: 13px; color: var(--slate); }
+.pub .sscore { font: 700 26px/1 var(--display); }
+.pub .sscore small { font: 400 11px var(--mono); color: var(--slate); }
+.pub .seobox.good .sscore { color: #2E7D32; } .pub .seobox.mid .sscore { color: #B26A00; } .pub .seobox.bad .sscore { color: var(--danger); }

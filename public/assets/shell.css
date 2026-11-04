@@ -36,3 +36,11 @@ main { max-width: 1200px; margin: 0 auto; padding: 48px 24px 96px; }
 .steps { font: 500 12px var(--mono); color: var(--slate); letter-spacing: .04em; }
 .steps b { color: var(--ink); }
 .card.is-hidden { opacity: .55; }
+
+/* SEO entry in the menu */
+.seo-tab { display: inline-flex; align-items: center; gap: 6px; background: var(--signal); border: 1px solid var(--ink); }
+.tabs a.seo-tab:hover { background: #D6F75E; }
+.tabs a.seo-tab[aria-current='page'] { background: var(--ink); color: var(--signal); }
+.seo-ic { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 4px; background: var(--ink); color: var(--signal); font-size: 12px; font-weight: 700; }
+.tabs a.seo-tab[aria-current='page'] .seo-ic { background: var(--signal); color: var(--ink); }
+

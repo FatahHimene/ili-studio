@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>SEO · ili studio</title>
+  <link rel="icon" href="/_ili/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/_ili/app.css" />
+  <link rel="stylesheet" href="/_ili/shell.css" />
+  <link rel="stylesheet" href="/_ili/seo.css" />
+</head>
+<body>
+  <header class="top">
+    <a class="logo" href="/"><span class="i"><span class="cur"></span>ı</span>li studio</a>
+    <nav class="tabs" id="nav"><a href="/">Sites</a><a href="/messages">Messages</a><a href="/seo" class="seo-tab" aria-current="page"><span class="seo-ic" aria-hidden="true">↗</span>SEO</a></nav>
+    <form method="post" action="/logout" style="margin-left:auto"><button class="btn btn-sm" type="submit">Sign out</button></form>
+  </header>
+  <main class="seo">
+    <div class="head">
+      <div><span class="label">Get found on Google</span><h1>SEO</h1></div>
+      <p class="muted" style="max-width:52ch;margin:0">Check any website, see what holds it back on Google, and fix it. Your ili studio sites can be fixed right here.</p>
+    </div>
+
+    <div class="layout">
+      <aside class="side">
+        <h2 class="sh">Your ili studio sites</h2>
+        <div id="sites" class="slist"></div>
+        <h2 class="sh">Other websites</h2>
+        <div id="ext" class="slist"></div>
+        <form id="addExt" class="addext">
+          <input class="input" name="url" placeholder="yourbusiness.co.uk" autocomplete="off" spellcheck="false" aria-label="Website address" required />
+          <button class="btn btn-sm btn-primary" type="submit">Check</button>
+        </form>
+        <p class="muted small" id="extNote"></p>
+      </aside>
+
+      <section class="panel" id="panel">
+        <div class="empty" id="empty">
+          <h2>Pick a website</h2>
+          <p class="muted">Choose one of your sites, or type the address of any website to get a free SEO audit.</p>
+        </div>
+        <div id="detail" hidden>
+          <div class="dhead">
+            <div><h2 id="dName"></h2><p class="muted small" id="dSub"></p></div>
+            <button class="btn btn-dark" id="run" type="button">Run the audit</button>
+          </div>
+          <div class="ptabs" role="tablist">
+            <button role="tab" data-t="audit" aria-selected="true">Audit</button>
+            <button role="tab" data-t="improve" aria-selected="false">Improvements</button>
+            <button role="tab" data-t="advanced" aria-selected="false" class="soon" title="Coming soon">Advanced SEO <span class="tag">Soon</span></button>
+          </div>
+          <div class="tpane" data-p="audit"></div>
+          <div class="tpane" data-p="improve" hidden></div>
+          <div class="tpane" data-p="advanced" hidden>
+            <div class="soonbox">
+              <span class="label">Coming soon</span>
+              <h3>Advanced SEO</h3>
+              <ul>
+                <li>Keyword ideas with real search volumes in your area</li>
+                <li>Your positions on Google, tracked every week</li>
+                <li>What your competitors do better</li>
+                <li>Blog articles written for the searches that matter</li>
+              </ul>
+              <p class="muted">Available soon as an option. We'll let you know.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+  <div class="toast" id="toast" role="status"></div>
+  <script src="/_ili/seo.js" type="module"></script>
+</body>
+</html>

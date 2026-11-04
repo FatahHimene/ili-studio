@@ -17,6 +17,7 @@
     <label class="field"><span>Your name</span><input class="input" type="text" name="name" autocomplete="name" maxlength="80" /></label>
     <label class="field"><span>Email</span><input class="input" type="email" name="email" id="email" autocomplete="email" required autofocus /></label>
     <label class="field"><span>Password</span><input class="input" type="password" name="password" autocomplete="new-password" minlength="8" required /><small class="muted">At least 8 characters.</small></label>
+    <input type="hidden" name="next" id="next" />
     <button class="btn btn-primary" type="submit">Create my account →</button>
     <p class="alt">Already have an account? <a href="/login">Sign in</a></p>
   </form>
@@ -24,6 +25,7 @@
     const q = new URLSearchParams(location.search);
     if (q.get('error')) { const el = document.getElementById('err'); el.textContent = q.get('error'); el.hidden = false; }
     if (q.get('email')) document.getElementById('email').value = q.get('email');
+    if (q.get('next') === 'seo') { document.getElementById('next').value = 'seo'; document.querySelector('h1').textContent = 'Check your website for free'; document.querySelector('.label').lastChild.textContent = 'Free SEO audit · no card needed'; document.querySelector('.alt a').href = '/login?next=seo'; }
   </script>
 </body>
 </html>

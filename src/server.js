@@ -21,6 +21,7 @@ import { prepareForms, receive, emailText, listMessages, updateMessage, deleteMe
 import { sendMail, mailEnabled } from './mail.js';
 import { PLATFORMS, cleanReviews, renderReviews, hasReviewsBlock } from './reviews.js';
 import { seoPage, seoFiles } from './seo.js';
+import { analyse, crawl, pagespeed } from './audit.js';
 import { PLANS, planOf, COSTS, FREE_DOMAIN, RESERVED } from './plans.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -87,13 +88,13 @@ app.get('/login', wrap(async (req, res) => ((await currentUser(req)) ? res.redir
 app.get('/signup', wrap(async (req, res) => ((await currentUser(req)) ? res.redirect('/') : send(res, 'signup.html'))));
 app.post('/login', wrap(async (req, res) => {
   const r = await login(req, res, req.body.email, req.body.password);
-  if (r.ok) return res.redirect('/');
+  if (r.ok) return res.redirect(req.body.next === 'seo' ? '/seo' : '/');
   res.redirect('/login?error=' + encodeURIComponent(r.error) + '&email=' + encodeURIComponent(String(req.body.email || '').slice(0, 120)));
 }));
 app.post('/signup', wrap(async (req, res) => {
   const r = await signup(req, res, { email: req.body.email, password: req.body.password, name: req.body.name });
-  if (r.ok) return res.redirect('/welcome');
-  res.redirect('/signup?error=' + encodeURIComponent(r.error) + '&email=' + encodeURIComponent(String(req.body.email || '').slice(0, 120)));
+  if (r.ok) return res.redirect(req.body.next === 'seo' ? '/seo' : '/welcome');
+  res.redirect('/signup?error=' + encodeURIComponent(r.error) + '&email=' + encodeURIComponent(String(req.body.email || '').slice(0, 120)) + (req.body.next === 'seo' ? '&next=seo' : ''));
 }));
 app.post('/logout', (req, res) => { logout(res); res.redirect('/login'); });
 
@@ -737,6 +738,138 @@ async function serveSite(sub, parts, res) {
   corsOk(res);
   res.sendFile(file);
 }
+// ---- SEO tool: audits of ili studio sites and of any public website -------------------------------
+const SEO_DIR = path.join(store.DATA_DIR, 'seo');
+const extFile = (uid) => path.join(SEO_DIR, 'external', `${uid}.json`);
+const auditFile = (key) => path.join(SEO_DIR, 'audits', `${key.replace(/[^\w-]/g, '')}.json`);
+const readJson = async (f, d) => { try { return JSON.parse(await fs.readFile(f, 'utf8')); } catch { return d; } };
+const writeJson = async (f, v) => { await fs.mkdir(path.dirname(f), { recursive: true }); await fs.writeFile(f + '.tmp', JSON.stringify(v)); await fs.rename(f + '.tmp', f); };
+const extLimit = (u) => (u.role === 'admin' ? 100 : u.plan === 'free' ? 1 : 5);
+const auditing = new Map(); // key -> started at
+
+app.get('/seo', requireAuth, (req, res) => send(res, 'seo.html'));
+app.get('/api/seo', requireAuth, wrap(async (req, res) => {
+  const sites = (await store.listSites()).filter((s) => req.user.role === 'admin' || s.owner === req.user.id);
+  const ext = await readJson(extFile(req.user.id), []);
+  const sum = async (key) => { const a = await readJson(auditFile(key), null); return a ? { at: a.at, score: a.score, counts: a.counts } : null; };
+  res.json({
+    sites: await Promise.all(sites.map(async (s) => ({ id: s.id, name: s.name, publishedAt: s.publishedAt, subdomain: s.subdomain || null, pages: s.pages.length, audit: await sum('s-' + s.id) }))),
+    external: await Promise.all(ext.map(async (e) => ({ ...e, audit: await sum('x-' + e.id) }))),
+    limit: extLimit(req.user),
+  });
+}));
+app.post('/api/seo/external', requireAuth, wrap(async (req, res) => {
+  let raw = String(req.body.url || '').trim();
+  if (!/^https?:\/\//i.test(raw)) raw = 'https://' + raw;
+  let u; try { u = new URL(raw); } catch { return res.status(400).json({ error: 'Enter a website address, like yourbusiness.co.uk' }); }
+  if (!/^https?:$/.test(u.protocol) || !/\.[a-z]{2,}$/i.test(u.hostname)) return res.status(400).json({ error: 'Enter a website address, like yourbusiness.co.uk' });
+  const list = await readJson(extFile(req.user.id), []);
+  if (list.some((e) => new URL(e.url).hostname === u.hostname)) return res.status(409).json({ error: 'This website is already in your list.' });
+  if (list.length >= extLimit(req.user)) return res.status(403).json({ error: req.user.plan === 'free' ? 'The Free plan can check 1 other website. Choose a plan to check more.' : 'You have reached the number of websites you can check.', code: 'ext_limit' });
+  const item = { id: store.newId(), url: u.origin + (u.pathname === '/' ? '/' : u.pathname), host: u.hostname, addedAt: new Date().toISOString() };
+  list.push(item); await writeJson(extFile(req.user.id), list);
+  res.json(item);
+}));
+app.delete('/api/seo/external/:id', requireAuth, wrap(async (req, res) => {
+  const list = (await readJson(extFile(req.user.id), [])).filter((e) => e.id !== req.params.id);
+  await writeJson(extFile(req.user.id), list);
+  await fs.rm(auditFile('x-' + req.params.id), { force: true });
+  res.json({ ok: true });
+}));
+app.get('/api/seo/audit/:kind/:id', requireAuth, wrap(async (req, res) => {
+  const key = await auditKey(req);
+  res.json(await readJson(auditFile(key), null));
+}));
+async function auditKey(req) {
+  if (req.params.kind === 'site') { await siteFor(req, req.params.id); return 's-' + req.params.id; }
+  const list = await readJson(extFile(req.user.id), []);
+  if (!list.some((e) => e.id === req.params.id)) throw new HttpError(404, 'Website not found');
+  return 'x-' + req.params.id;
+}
+/** Audit of an ili studio site: its draft pages (what will be published). */
+async function auditSite(meta, withSpeed) {
+  const pages = [];
+  for (const p of meta.pages) {
+    const html = await fs.readFile(store.safeJoin(store.draftDir(meta.id), p), 'utf8').catch(() => null);
+    if (html) pages.push({ path: p, url: p, html });
+  }
+  const speed = withSpeed && meta.publishedAt && meta.subdomain ? await pagespeed(freeUrl(meta.subdomain)) : null;
+  return { ...analyse(pages, { kind: 'ili', auto: true, speed }), speed };
+}
+app.post('/api/seo/audit/:kind/:id', requireAuth, wrap(async (req, res) => {
+  const key = await auditKey(req);
+  const last = auditing.get(key);
+  if (last && Date.now() - last < 30000) return res.status(429).json({ error: 'An audit is already running for this website. Try again in a moment.' });
+  auditing.set(key, Date.now());
+  try {
+    let out;
+    if (req.params.kind === 'site') {
+      const meta = await siteFor(req, req.params.id);
+      out = { kind: 'site', name: meta.name, ...(await auditSite(meta, true)) };
+    } else {
+      const item = (await readJson(extFile(req.user.id), [])).find((e) => e.id === req.params.id);
+      const c = await crawl(item.url, req.user.plan === 'free' ? 5 : 20);
+      const speed = await pagespeed(c.pages[0]?.url || item.url);
+      out = { kind: 'external', name: item.host, url: item.url, ...analyse(c.pages, { kind: 'external', https: c.https, robots: c.robots, sitemap: c.sitemap, statuses: c.statuses, speed }), speed };
+    }
+    out.at = new Date().toISOString();
+    await writeJson(auditFile(key), out);
+    res.json(out);
+  } catch (e) {
+    if (e instanceof HttpError) throw e;
+    console.warn('[seo] audit failed:', e.message);
+    res.status(400).json({ error: e.message || 'The audit failed. Try again.' });
+  } finally { auditing.delete(key); }
+}));
+/** Quick score for the publish dialog (no speed test). */
+app.get('/api/sites/:id/seo-score', requireAuth, wrap(async (req, res) => {
+  const meta = await siteFor(req);
+  const a = await auditSite(meta, false);
+  res.json({ score: a.score, counts: a.counts, top: a.issues.slice(0, 3).map((i) => i.title) });
+}));
+/** Set a page's title and description (ili studio sites). */
+app.post('/api/sites/:id/seo-meta', requireAuth, wrap(async (req, res) => {
+  const meta = await siteFor(req);
+  const page = String(req.body.page || '');
+  if (!meta.pages.includes(page)) return res.status(404).json({ error: 'Page not found' });
+  const title = String(req.body.title ?? '').replace(/\s+/g, ' ').trim().slice(0, 90);
+  const description = String(req.body.description ?? '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  if (!title) return res.status(400).json({ error: 'The title cannot be empty' });
+  const f = store.safeJoin(store.draftDir(meta.id), page);
+  const before = await fs.readFile(f, 'utf8');
+  const $ = cheerio.load(before);
+  if (!$('head title').length) $('head').append('<title></title>');
+  $('head title').first().text(title);
+  let m = $('head meta[name="description"]');
+  if (!m.length) { m = $('<meta name="description">'); $('head').append(m); }
+  m.attr('content', description);
+  await store.pushHistory(meta.id, page, before);
+  await fs.writeFile(f, $.html());
+  meta.dirty = true; meta.updatedAt = new Date().toISOString();
+  await store.writeMeta(meta.id, meta);
+  res.json({ ok: true, title, description });
+}));
+/** Wren writes a title and description for a page (1 AI credit). */
+app.post('/api/sites/:id/seo-write', requireAuth, wrap(async (req, res) => {
+  const meta = await siteFor(req);
+  const page = String(req.body.page || '');
+  if (!meta.pages.includes(page)) return res.status(404).json({ error: 'Page not found' });
+  if (!users.canSpend(req.user, 1)) return res.status(402).json({ error: 'You have used all your AI credits.', code: 'no_credits' });
+  const $ = cheerio.load(await fs.readFile(store.safeJoin(store.draftDir(meta.id), page), 'utf8'));
+  $('script, style, noscript').remove();
+  const text = $('body').text().replace(/\s+/g, ' ').trim().slice(0, 3000);
+  const b = meta.brief || {};
+  try {
+    const { data } = await askJson({
+      system: 'You are an SEO copywriter for small UK businesses. British English. Write a page title (50-60 characters: main service + town + business name) and a meta description (130-155 characters, specific, with a call to action). Never invent facts, prices, awards or reviews.',
+      user: `Business: ${b.business || meta.name}\nTrade: ${b.trade || ''}\nTown/area: ${b.town || ''}\nServices: ${b.services || ''}\nPage file: ${page}\nPage text:\n${text}\n\nReturn {"title": "...", "description": "..."}`,
+      mock: () => ({ title: `${b.trade || 'Services'} in ${b.town || 'your area'} | ${b.business || meta.name}`.slice(0, 60), description: `${b.business || meta.name}: ${b.services || b.trade || 'local services'}${b.town ? ' in ' + b.town : ''}. Get in touch today for a free quote.`.slice(0, 155) }),
+    });
+    const payer = await users.spend(req.user.id, 1);
+    res.json({ title: String(data.title || '').slice(0, 90), description: String(data.description || '').slice(0, 200), credits: payer?.role === 'admin' ? null : payer?.credits });
+  } catch (e) { res.status(400).json({ error: e instanceof AiError ? e.message : 'Wren could not write this. Try again.' }); }
+}));
+
 // ---- reviews -----------------------------------------------------------------------------------
 app.get('/api/sites/:id/reviews', requireAuth, wrap(async (req, res) => {
   const meta = await siteFor(req);

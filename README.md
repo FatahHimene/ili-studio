@@ -147,3 +147,15 @@ Les données sont dans `./data` (ou `DATA_DIR`).
 Titre et description par page, adresse canonique, aperçu de partage (Open Graph / Twitter), données structurées
 LocalBusiness sur l'accueil (à partir du brief), chargement différé des images, `sitemap.xml` et `robots.txt`.
 La page `thanks.html` est en `noindex` et ne compte pas dans la limite de pages.
+
+## Outil SEO (menu « SEO »)
+
+- Un seul compte pour tout : sites ili studio, messages et SEO. `/signup?next=seo` ouvre directement l'outil SEO.
+- **Audit** des sites ili studio (pages en préparation) et de n'importe quel site public (exploration de 5 pages en Free,
+  20 sinon ; protections contre les adresses internes). Score sur 100, problèmes classés (à corriger, à améliorer, conseils).
+- **Améliorations** pour les sites ili studio : titre et description de chaque page avec aperçu Google, « Write with Wren »
+  (1 crédit), descriptions d'images, liens vers l'éditeur. Pour les sites externes : liste des changements + proposition ili studio.
+- **Advanced SEO** : onglet « Bientôt disponible ».
+- Avant de publier, la fenêtre de publication montre le score SEO avec « Finalise my SEO first ».
+- Vitesse mobile via l'API PageSpeed de Google (gratuite) ; `PAGESPEED_API_KEY` optionnel pour un quota plus élevé.
+- Limites : 1 site externe en Free, 5 sur les offres payantes.

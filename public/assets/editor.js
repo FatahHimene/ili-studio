@@ -405,8 +405,8 @@ $('#siteName').onchange = async (e) => {
 $('#publish').onclick = () => openPublish();
 async function openPublish() {
   flushStyle?.();
-  let a;
-  try { a = await api('/address'); } catch (e) { return toast(esc(e.message), true); }
+  let a, seo = null;
+  try { [a, seo] = await Promise.all([api('/address'), api('/seo-score').catch(() => null)]); } catch (e) { return toast(esc(e.message), true); }
   const plan = a.plan; // null for the admin
   const { renderOffers, choosePlan } = await import('/_ili/offers.js');
   const wrap = document.createElement('div');
@@ -418,7 +418,10 @@ async function openPublish() {
       <div class="addr"><span>https://</span><input class="input" id="pubSub" value="${esc(a.sub)}" maxlength="40" autocomplete="off" spellcheck="false" aria-label="Address"><span>.${esc(a.freeDomain)}</span></div>
       <p class="amsg" id="pubMsg" aria-live="polite"></p>
       ${a.locked.length ? `<p class="lock">Your ${esc(plan?.name || '')} plan publishes ${a.live.length === 1 ? 'one page' : a.live.length + ' pages'}: <b>${a.live.map(pageLabel).map(esc).join(', ')}</b>. Your page${a.locked.length > 1 ? 's' : ''} <b>${a.locked.map(pageLabel).map(esc).join(', ')}</b> ${a.locked.length > 1 ? 'are' : 'is'} ready and will go live as soon as you choose a plan.</p>` : ''}
-      <div class="row"><button class="btn btn-primary" id="pubGo" type="button">${plan?.id === 'free' ? 'Publish for free →' : 'Publish →'}</button></div>
+      ${seo ? `<div class="seobox ${seo.score >= 80 ? 'good' : seo.score >= 50 ? 'mid' : 'bad'}"><b class="sscore">${seo.score}<small>/100</small></b>
+        <div><b>SEO score</b><p>${seo.counts.error + seo.counts.warning ? `${seo.counts.error + seo.counts.warning} thing${seo.counts.error + seo.counts.warning > 1 ? 's' : ''} to improve before Google sees your site${seo.top.length ? ': ' + seo.top.slice(0, 2).map(esc).join(', ').toLowerCase() : ''}.` : 'Your site is ready for Google.'}</p></div>
+        ${seo.counts.error + seo.counts.warning ? `<a class="btn btn-sm" href="/seo?site=${id}&tab=improve">Finalise my SEO first →</a>` : ''}</div>` : ''}
+      <div class="row"><button class="btn btn-primary" id="pubGo" type="button">${plan?.id === 'free' ? 'Publish now for free →' : 'Publish now →'}</button></div>
       <div class="done" id="pubDone" hidden></div>
     </section>
     ${plan && !plan.customDomain ? `<section class="pup">
@@ -451,7 +454,7 @@ async function openPublish() {
     } catch (e) {
       msg.className = 'amsg bad'; msg.textContent = e.message;
       if (e.code === 'publish_limit') wrap.querySelector('.pup')?.scrollIntoView({ behavior: 'smooth' });
-      go.textContent = plan?.id === 'free' ? 'Publish for free →' : 'Publish →';
+      go.textContent = plan?.id === 'free' ? 'Publish now for free →' : 'Publish now →';
     }
     go.disabled = !ok;
   };

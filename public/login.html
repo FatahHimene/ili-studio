@@ -16,6 +16,7 @@
     <p class="err" id="err" hidden></p>
     <label class="field"><span>Email</span><input class="input" type="text" name="email" id="email" autocomplete="username" inputmode="email" required autofocus /></label>
     <label class="field"><span>Password</span><input class="input" type="password" name="password" autocomplete="current-password" required /></label>
+    <input type="hidden" name="next" id="next" />
     <button class="btn btn-primary" type="submit">Sign in →</button>
     <p class="alt">New to ili studio? <a href="/signup">Create your free account</a></p>
   </form>
@@ -23,6 +24,7 @@
     const q = new URLSearchParams(location.search);
     if (q.get('error')) { const el = document.getElementById('err'); el.textContent = q.get('error'); el.hidden = false; }
     if (q.get('email')) document.getElementById('email').value = q.get('email');
+    if (q.get('next') === 'seo') { document.getElementById('next').value = 'seo'; document.querySelector('.alt a').href = '/signup?next=seo'; }
   </script>
 </body>
 </html>
