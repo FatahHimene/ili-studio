@@ -121,7 +121,7 @@ async function siteLimit(user) {
   if (user.role === 'admin') return null;
   const plan = planOf(user);
   const n = (await store.listSites()).filter((s) => s.owner === user.id).length;
-  return n >= plan.sites ? `Your ${plan.name} plan allows ${plan.sites} sites. Delete one to start another.` : null;
+  return n >= plan.drafts ? `Your ${plan.name} plan allows ${plan.drafts} sites in progress. Delete one to start another.` : null;
 }
 
 // ---- dashboard & editor pages -------------------------------------------------------------
@@ -638,7 +638,7 @@ app.post('/api/sites/:id/publish', requireAuth, wrap(async (req, res) => {
   if (problem) return res.status(409).json({ error: problem });
   if (req.user.role !== 'admin') {
     const others = (await store.listSites()).filter((s) => s.owner === req.user.id && s.id !== meta.id && s.publishedAt).length;
-    const maxLive = req.user.plan === 'free' ? 1 : planOf(req.user).sites;
+    const maxLive = planOf(req.user).sites;
     if (others >= maxLive) return res.status(403).json({ error: `Your ${planOf(req.user).name} plan can have ${maxLive} published site${maxLive > 1 ? 's' : ''}. Unpublish the other one first, or choose a plan.`, code: 'publish_limit' });
   }
   const { live, locked } = publishable(meta, req.user);

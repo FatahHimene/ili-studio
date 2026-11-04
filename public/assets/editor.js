@@ -349,7 +349,7 @@ async function openPublish() {
     </section>
     ${plan && !plan.customDomain ? `<section class="pup">
       <h3>Want your own domain, like yourbusiness.co.uk?</h3>
-      <p class="muted">Plus and Pro put your site on your own domain, with more pages and more AI credits. Free stays free if you prefer.</p>
+      <p class="muted">Every paid plan puts your site on your own domain, without the ili studio link, with more pages and more AI credits. Free stays free if you prefer.</p>
       <div class="ogrid"></div><p class="onote" hidden></p>
     </section>` : ''}
   </div>`;

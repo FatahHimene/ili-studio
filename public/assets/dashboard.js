@@ -124,7 +124,7 @@ $('#stepBrief').addEventListener('change', (e) => {
   if (e.target.name === 'writeMode') { const ta = $('#stepBrief').elements.presentation; ta.hidden = e.target.value !== 'own'; if (!ta.hidden) ta.focus(); }
 });
 $('#fromTheme').onclick = async () => {
-  if (me.role !== 'admin' && sites.length >= (me.planInfo?.sites || 3)) return toast(`Your ${esc(me.planInfo.name)} plan allows ${me.planInfo.sites} sites. Delete one to start another.`, true);
+  if (me.role !== 'admin' && sites.length >= (me.planInfo?.drafts || 3)) return toast(`Your ${esc(me.planInfo.name)} plan allows ${me.planInfo.drafts} sites in progress. Delete one to start another.`, true);
   modal.hidden = false; step('theme');
   const r = await fetch('/api/themes'); themes = await r.json(); renderThemes();
 };
