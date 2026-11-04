@@ -29,6 +29,11 @@
       <div><span class="label">Admin · themes</span><h1>Designer-made themes</h1></div>
       <p class="muted" style="max-width:48ch;margin:0">Themes your customers start from. Upload a theme as a ZIP with a <code>theme.json</code>. Wren personalises its marked slots from each customer's brief.</p>
     </div>
+    <div class="tfilter">
+      <label class="tsearch"><span class="sr-only">Search themes</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="search" id="tq" placeholder="Search by name, category, palette…" autocomplete="off" /></label>
+      <div class="cats" id="cats"></div>
+      <span class="tcount" id="tcount" aria-live="polite"></span>
+    </div>
     <div class="grid" id="grid">
       <form class="up" id="up">
         <span class="label">Add or update a theme</span>

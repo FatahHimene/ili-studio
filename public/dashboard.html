@@ -55,7 +55,11 @@
       </div>
       <div class="sheet-body">
         <section id="stepTheme">
-          <div class="cats" id="cats"></div>
+          <div class="tfilter">
+            <label class="tsearch"><span class="sr-only">Search themes</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="search" id="tq" placeholder="Search themes: plumber, salon, dark…" autocomplete="off" /></label>
+            <div class="cats" id="cats"></div>
+            <span class="tcount" id="tcount" aria-live="polite"></span>
+          </div>
           <div class="tgrid" id="tgrid"></div>
         </section>
 

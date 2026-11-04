@@ -1,3 +1,4 @@
+import { themeFilter, noMatch } from './theme-filter.js';
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function toast(msg, err = false) {
@@ -6,10 +7,11 @@ function toast(msg, err = false) {
 }
 const grid = $('#grid');
 
-async function load() {
-  const r = await fetch('/api/themes?all=1'); if (r.status === 401) { location.href = '/login'; return; }
-  const themes = await r.json();
-  grid.querySelectorAll('.tcard').forEach((c) => c.remove());
+const filter = themeFilter({
+  input: $('#tq'), cats: $('#cats'), count: $('#tcount'),
+  render(themes, f) {
+    grid.querySelectorAll('.tcard, .tnone').forEach((c) => c.remove());
+    if (!themes.length && (f.q || f.cat !== 'All')) grid.insertAdjacentHTML('beforeend', noMatch(f));
   for (const t of themes) {
     const el = document.createElement('article');
     el.className = 'card tcard' + (t.hidden ? ' is-hidden' : '');
@@ -28,6 +30,12 @@ async function load() {
       </div>`;
     grid.appendChild(el);
   }
+  },
+});
+
+async function load() {
+  const r = await fetch('/api/themes?all=1'); if (r.status === 401) { location.href = '/login'; return; }
+  filter.set(await r.json());
 }
 
 grid.addEventListener('click', async (e) => {
@@ -52,15 +60,8 @@ async function upload(file) {
   const d = await r.json().catch(() => ({}));
   $('#status').textContent = '';
   if (!r.ok) return toast(esc(d.error || 'Install failed'), true);
-  toast(`Theme “${esc(d.name)}” installed`); function fitThumbs() {
-  document.querySelectorAll('.thumb').forEach((t) => {
-    const f = t.querySelector('iframe'); if (!f) return;
-    const scale = t.clientWidth / 1280; f.style.width = '1280px'; f.style.height = `${Math.ceil(t.clientHeight / scale)}px`; f.style.transform = `scale(${scale})`;
-  });
-}
-new ResizeObserver(fitThumbs).observe(document.body);
-new MutationObserver(fitThumbs).observe(document.body, { childList: true, subtree: true });
-load();
+  toast(`Theme “${esc(d.name)}” installed`);
+  load();
 }
 const up = $('#up');
 $('#choose').onclick = () => $('#file').click();
