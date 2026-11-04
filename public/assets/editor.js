@@ -159,6 +159,7 @@ function fillStyle(st) {
   $('#sWidth').value = st.widthPct ?? 100; $('#sWidthVal').textContent = st.widthSet ? `${st.widthPct}%` : `auto (${st.widthPct}%)`;
   $('#sHeight').value = st.height ?? ''; $('#sHeight').placeholder = st.heightNow ? `auto (${st.heightNow})` : 'auto';
   $('#sFit').value = st.fit || '';
+  focalFill(st);
   $('#sMt').value = st.mt ?? 0; $('#sMb').value = st.mb ?? 0;
 }
 const isHex = (v) => /^#[0-9a-f]{6}$/i.test(v);
@@ -181,7 +182,56 @@ $('#sPadY').onchange = pad; $('#sPadX').onchange = pad;
 $('#sWidth').oninput = (e) => { $('#sWidthVal').textContent = e.target.value + '%'; live({ width: e.target.value + '%', 'max-width': '100%' }); };
 $('#sWidthAuto').onclick = () => { live({ width: null, 'max-width': null }); $('#sWidthVal').textContent = 'auto'; };
 $('#sHeight').onchange = (e) => { const v = Number(e.target.value); live({ height: v > 0 ? v + 'px' : null }); };
-$('#sFit').onchange = (e) => live({ 'object-fit': e.target.value || null });
+$('#sFit').onchange = (e) => { live({ 'object-fit': e.target.value || null }); focal.fit = e.target.value || focal.fitNow; focalDraw(); };
+
+// ---- visible part of an image (object-position) -------------------------------------------------
+const focal = { x: 50, y: 50, natW: 0, natH: 0, boxW: 0, boxH: 0, fit: 'fill', fitNow: 'fill' };
+function focalFill(st) {
+  const isImg = state.sel?.kind === 'image';
+  $('#posField').hidden = !isImg;
+  if (!isImg) return;
+  const [px, py] = String(st.pos || '50% 50%').split(/\s+/);
+  const pct = (v) => (/%$/.test(v || '') ? parseFloat(v) : v === 'left' || v === 'top' ? 0 : v === 'right' || v === 'bottom' ? 100 : 50);
+  Object.assign(focal, { x: pct(px), y: pct(py), natW: st.natW, natH: st.natH, boxW: st.boxW, boxH: st.boxH, fitNow: st.fitNow, fit: st.fit || st.fitNow });
+  const img = $('#focalImg');
+  img.onload = () => {
+    if (!focal.natW) { focal.natW = img.naturalWidth || 1600; focal.natH = img.naturalHeight || 1000; }
+    const ar = focal.natW / focal.natH || 1.6;
+    const w = Math.min($('#posField').clientWidth || 280, 220 * ar);
+    img.style.width = w + 'px'; img.style.height = Math.round(w / ar) + 'px';
+    focalDraw();
+  };
+  img.src = state.sel.preview || '';
+  focalDraw();
+}
+function focalDraw() {
+  $('#focalDot').style.left = focal.x + '%'; $('#focalDot').style.top = focal.y + '%';
+  const box = $('#focalBox');
+  const imgAR = focal.natW / focal.natH, boxAR = focal.boxW / focal.boxH;
+  let w = 100, h = 100;
+  if (focal.fit === 'cover' && imgAR && boxAR) { if (imgAR > boxAR) w = (boxAR / imgAR) * 100; else h = (imgAR / boxAR) * 100; }
+  box.style.width = w + '%'; box.style.height = h + '%';
+  box.style.left = ((100 - w) * focal.x) / 100 + '%'; box.style.top = ((100 - h) * focal.y) / 100 + '%';
+  const cropped = w < 99.5 || h < 99.5;
+  box.hidden = !cropped;
+  $('#focalNote').textContent = focal.fit !== 'cover' ? 'Choosing a part switches the image to “Fill and crop”.'
+    : cropped ? 'The bright frame is what visitors see. Move it to choose the part to show.' : 'The whole photo is visible in this shape. Change the height to crop it.';
+}
+function focalSet(x, y) {
+  focal.x = Math.round(Math.max(0, Math.min(100, x))); focal.y = Math.round(Math.max(0, Math.min(100, y)));
+  const props = { 'object-position': `${focal.x}% ${focal.y}%` };
+  if (focal.fit !== 'cover') { props['object-fit'] = 'cover'; focal.fit = 'cover'; $('#sFit').value = 'cover'; }
+  live(props); focalDraw();
+}
+(() => {
+  const area = $('#focal'); let dragging = false;
+  const at = (e) => { const r = $('#focalImg').getBoundingClientRect(); focalSet(((e.clientX - r.left) / r.width) * 100, ((e.clientY - r.top) / r.height) * 100); };
+  area.addEventListener('pointerdown', (e) => { dragging = true; area.setPointerCapture(e.pointerId); at(e); });
+  area.addEventListener('pointermove', (e) => { if (dragging) at(e); });
+  area.addEventListener('pointerup', () => { dragging = false; });
+  document.querySelectorAll('[data-pos]').forEach((b) => b.onclick = () => { const [x, y] = b.dataset.pos.split(' ').map(parseFloat); focalSet(x, y); });
+  $('#sHeight').addEventListener('change', (e) => { const v = Number(e.target.value); if (v > 0) { focal.boxH = v; focalDraw(); } });
+})();
 $('#sMt').onchange = (e) => live({ 'margin-top': Math.max(0, Number(e.target.value) || 0) + 'px' });
 $('#sMb').onchange = (e) => live({ 'margin-bottom': Math.max(0, Number(e.target.value) || 0) + 'px' });
 
@@ -266,7 +316,7 @@ $('#pgForm').onsubmit = async (e) => {
 $('#resetStyle').onclick = () => {
   if (!state.sel) return;
   const props = { color: null, 'background-color': null, 'font-size': null, 'font-weight': null, 'text-align': null, 'border-radius': null, padding: null,
-    width: null, 'max-width': null, height: null, 'object-fit': null, 'margin-top': null, 'margin-bottom': null };
+    width: null, 'max-width': null, height: null, 'object-fit': null, 'object-position': null, 'margin-top': null, 'margin-bottom': null };
   live(props); flushStyle();
   tell({ cmd: 'style', id: state.sel.id, props: {}, notify: true });
 }

@@ -113,3 +113,11 @@ body.fs .device { width: 100% !important; border: 0; border-radius: 0; box-shado
 #swList { display: flex; flex-wrap: wrap; gap: 6px; }
 #swList button { width: 28px; height: 28px; border-radius: 50%; border: 1px solid rgba(0,0,0,.2); cursor: pointer; padding: 0; }
 #swList button:hover { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+/* visible part of an image */
+.focal { position: relative; display: block; width: fit-content; max-width: 100%; margin: 0 auto; border: 1px solid var(--ink); border-radius: var(--r); overflow: hidden; cursor: crosshair; touch-action: none; user-select: none; background: var(--paper); }
+.focal img { display: block; max-width: 100%; object-fit: fill; pointer-events: none; }
+.focal .fbox { position: absolute; border: 2px solid var(--signal); box-shadow: 0 0 0 9999px rgba(13,18,33,.55); pointer-events: none; }
+.focal .fdot { position: absolute; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: var(--signal); border: 2px solid var(--ink); pointer-events: none; }
+.posbtns { flex-wrap: wrap; gap: 4px; }
+.posbtns .btn { padding: 5px 8px; font-size: 12px; }

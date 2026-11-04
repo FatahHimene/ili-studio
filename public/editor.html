@@ -154,6 +154,18 @@
               <select class="input" id="sFit"><option value="">Default</option><option value="cover">Fill and crop</option><option value="contain">Show whole image</option></select>
             </label>
           </div>
+          <div class="sfield" id="posField" hidden>
+            <span>Visible part <b>click or drag on the photo</b></span>
+            <div class="focal" id="focal"><img id="focalImg" alt="" draggable="false" /><i class="fbox" id="focalBox"></i><i class="fdot" id="focalDot"></i></div>
+            <div class="row nowrap posbtns">
+              <button class="btn btn-sm" type="button" data-pos="50% 0%" title="Show the top">Top</button>
+              <button class="btn btn-sm" type="button" data-pos="50% 50%" title="Show the centre">Centre</button>
+              <button class="btn btn-sm" type="button" data-pos="50% 100%" title="Show the bottom">Bottom</button>
+              <button class="btn btn-sm" type="button" data-pos="0% 50%" title="Show the left">Left</button>
+              <button class="btn btn-sm" type="button" data-pos="100% 50%" title="Show the right">Right</button>
+            </div>
+            <p class="muted small" id="focalNote"></p>
+          </div>
           <div class="sgrid">
             <label class="sfield"><span>Space above (px)</span><input class="input" type="number" id="sMt" min="0" max="400" /></label>
             <label class="sfield"><span>Space below (px)</span><input class="input" type="number" id="sMb" min="0" max="400" /></label>

@@ -67,7 +67,8 @@
       radius: Math.round(parseFloat(cs.borderTopLeftRadius) || 0), padY: Math.round(parseFloat(cs.paddingTop) || 0), padX: Math.round(parseFloat(cs.paddingLeft) || 0),
       widthPct: (() => { const p = el.parentElement?.getBoundingClientRect().width || 0; return p ? Math.min(100, Math.round((el.getBoundingClientRect().width / p) * 100)) : 100; })(),
       widthSet: !!el.style.width, height: el.style.height ? Math.round(parseFloat(el.style.height)) : null, heightNow: Math.round(el.getBoundingClientRect().height),
-      fit: el.style.objectFit || '', mt: Math.round(parseFloat(cs.marginTop) || 0), mb: Math.round(parseFloat(cs.marginBottom) || 0),
+      fit: el.style.objectFit || '', fitNow: cs.objectFit, pos: cs.objectPosition,
+      natW: el.naturalWidth || 0, natH: el.naturalHeight || 0, boxW: Math.round(el.getBoundingClientRect().width), boxH: Math.round(el.getBoundingClientRect().height), mt: Math.round(parseFloat(cs.marginTop) || 0), mb: Math.round(parseFloat(cs.marginBottom) || 0),
       inline: el.getAttribute('style') || '',
     };
   }

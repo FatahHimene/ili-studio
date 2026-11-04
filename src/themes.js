@@ -1,7 +1,7 @@
 // Themes: designer-made website templates that Wren personalises from a brief.
 //
 // A theme is a folder (or a ZIP of it) with:
-//   theme.json          { id, name, category, description, version, preview?, pages?, templates?, sections? }
+//   theme.json          { id, name, category, subcategory?, tags?, description, version, preview?, pages?, templates?, palettes? }
 //   index.html …        the theme's pages (any .html at the top level, or the list in "pages")
 //   assets/ …           css, fonts, images, scripts used by the pages
 //   templates/*.html    optional page templates ("About", "Contact"…) the owner can add later
@@ -47,7 +47,9 @@ async function readTheme(dir, source) {
       colors: Object.fromEntries(Object.entries(p.colors || {}).filter(([k, v]) => /^--[a-z0-9-]{1,40}$/i.test(k) && COLOR.test(String(v).trim())).map(([k, v]) => [k, String(v).trim()])),
     })).filter((p) => Object.keys(p.colors).length);
     return {
-      id: t.id, name: String(t.name || t.id), category: String(t.category || 'General'), description: String(t.description || ''),
+      id: t.id, name: String(t.name || t.id), category: String(t.category || 'General'), subcategory: String(t.subcategory || '').slice(0, 60),
+      tags: (Array.isArray(t.tags) ? t.tags : []).map((x) => String(x).trim().toLowerCase().slice(0, 30)).filter(Boolean).slice(0, 20),
+      description: String(t.description || ''),
       version: String(t.version || '1.0.0'), preview, pages, templates, palettes, source, dir,
     };
   } catch { return null; }

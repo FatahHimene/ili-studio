@@ -91,7 +91,8 @@ drop.addEventListener('submit', (e) => e.preventDefault());
 
 // ---- new site from a theme -------------------------------------------------------------------
 const modal = $('#modal');
-let themes = []; let chosen = null; let cat = 'All';
+let themes = []; let chosen = null; let cat = 'All'; let sub = 'All';
+const norm = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
 function step(name) {
   $('#stepTheme').hidden = name !== 'theme'; $('#stepBrief').hidden = name !== 'brief'; $('#stepWork').hidden = name !== 'work';
   $('#mTitle').textContent = { theme: 'Choose a theme', brief: 'Tell Wren about your business', work: 'Creating your site' }[name];
@@ -100,16 +101,24 @@ function step(name) {
 }
 function renderThemes() {
   const cats = ['All', ...new Set(themes.map((t) => t.category))];
-  $('#cats').innerHTML = cats.map((c) => `<button type="button" aria-pressed="${c === cat}">${esc(c)}</button>`).join('');
-  const list = themes.filter((t) => cat === 'All' || t.category === cat);
+  $('#cats').innerHTML = cats.map((c) => `<button type="button" data-cat="${esc(c)}" aria-pressed="${c === cat}">${esc(c)}</button>`).join('');
+  const subs = cat === 'All' ? [] : [...new Set(themes.filter((t) => t.category === cat && t.subcategory).map((t) => t.subcategory))];
+  $('#subs').hidden = subs.length < 1;
+  $('#subs').innerHTML = ['All', ...subs].map((s) => `<button type="button" data-sub="${esc(s)}" aria-pressed="${s === sub}">${esc(s === 'All' ? 'All ' + cat.toLowerCase() : s)}</button>`).join('');
+  const words = norm($('#tq').value).split(/\s+/).filter(Boolean);
+  const list = themes.filter((t) => (cat === 'All' || t.category === cat) && (sub === 'All' || t.subcategory === sub)
+    && words.every((w) => norm([t.name, t.category, t.subcategory, t.description, ...(t.tags || [])].join(' ')).includes(w)));
   $('#tgrid').innerHTML = list.length ? list.map((t) => `
     <article class="tpick">
       <a class="thumb" href="/theme-files/${t.id}/index.html" target="_blank" rel="noopener" aria-label="Preview ${esc(t.name)}">${t.preview ? `<img src="/theme-files/${t.id}/${esc(t.preview)}" alt="">` : `<iframe loading="lazy" sandbox="allow-scripts" tabindex="-1" title="" scrolling="no" src="/theme-files/${t.id}/index.html"></iframe>`}</a>
-      <div class="meta"><h3>${esc(t.name)}</h3><div class="facts"><span class="tag">${esc(t.category)}</span><span>${t.pages.length} pages</span></div><p>${esc(t.description)}</p></div>
+      <div class="meta"><h3>${esc(t.name)}</h3><div class="facts"><span class="tag">${esc(t.category)}</span>${t.subcategory ? `<span>${esc(t.subcategory)}</span>` : ''}<span>· ${t.pages.length} pages</span></div><p>${esc(t.description)}</p></div>
       <div class="acts"><a class="btn btn-sm" href="/theme-files/${t.id}/index.html" target="_blank" rel="noopener">Preview ↗</a><button class="btn btn-sm btn-primary pick" data-id="${esc(t.id)}" type="button">Use this theme →</button></div>
-    </article>`).join('') : '<p class="muted">No themes yet. Add one in Themes.</p>';
+    </article>`).join('') : `<p class="muted">${themes.length ? 'No theme matches your search. Try another word, or <a href="#" id="tReset">show all themes</a>.' : 'No themes yet.'}</p>`;
+  const r = document.getElementById('tReset'); if (r) r.onclick = (e) => { e.preventDefault(); $('#tq').value = ''; cat = 'All'; sub = 'All'; renderThemes(); };
 }
-$('#cats').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { cat = b.textContent; renderThemes(); } });
+$('#cats').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { cat = b.dataset.cat; sub = 'All'; renderThemes(); } });
+$('#subs').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { sub = b.dataset.sub; renderThemes(); } });
+$('#tq').addEventListener('input', () => renderThemes());
 $('#tgrid').addEventListener('click', (e) => {
   const b = e.target.closest('.pick'); if (!b) return;
   chosen = themes.find((t) => t.id === b.dataset.id);

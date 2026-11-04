@@ -15,7 +15,11 @@
 .sub { font-size: 24px; margin-bottom: 18px; }
 .empty { grid-column: 1 / -1; }
 
+.tsearch { margin-bottom: 14px; }
+.tsearch .input { max-width: 460px; }
 .cats { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+.cats.subs { margin-top: -8px; }
+.cats.subs button { font-size: 12px; padding: 5px 10px; border-color: var(--slate); }
 .cats button { font: 500 13px var(--body); border: 1px solid var(--ink); background: var(--white); border-radius: 999px; padding: 6px 12px; cursor: pointer; }
 .cats button[aria-pressed='true'] { background: var(--ink); color: var(--paper); }
 .tgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }

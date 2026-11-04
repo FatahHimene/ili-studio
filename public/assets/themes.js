@@ -17,7 +17,7 @@ async function load() {
     el.innerHTML = `
       <a class="thumb" href="/theme-files/${t.id}/index.html" target="_blank" rel="noopener" aria-label="Preview ${esc(t.name)}">${thumb}</a>
       <div class="meta"><h3>${esc(t.name)}</h3>
-        <div class="facts"><span class="tag">${esc(t.category)}</span><span>v${esc(t.version)}</span><span>· ${t.pages.length} page${t.pages.length > 1 ? 's' : ''}</span><span>· ${t.source}</span>${t.hidden ? '<span class="tag">Hidden</span>' : ''}</div>
+        <div class="facts"><span class="tag">${esc(t.category)}</span>${t.subcategory ? `<span>${esc(t.subcategory)}</span>` : ''}<span>v${esc(t.version)}</span><span>· ${t.pages.length} page${t.pages.length > 1 ? 's' : ''}</span><span>· ${t.source}</span>${t.hidden ? '<span class="tag">Hidden</span>' : ''}</div>
         <p>${esc(t.description)}</p>
         ${(t.palettes || []).length ? `<div class="facts">${t.palettes.map((p) => `<span title="${esc(p.name)}" style="display:inline-flex">${Object.values(p.colors).slice(0, 4).map((c) => `<i style="width:14px;height:14px;display:inline-block;background:${esc(c)};border:1px solid rgba(0,0,0,.12)"></i>`).join('')}</span>`).join(' ')}</div>` : ''}
         ${t.templates.length ? `<div class="tpls">${t.templates.map((x) => `<span class="tag">+ ${esc(x.name)}</span>`).join('')}</div>` : ''}
