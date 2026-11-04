@@ -46,3 +46,15 @@
 .pub .pup h3 { font-size: 20px; }
 .pub .pup p { margin: 0; }
 .credits { margin: 0; font-family: var(--mono); }
+
+/* reviews dialog */
+.revs .rgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.revs .rmode { justify-self: start; }
+.revs section { display: grid; gap: 12px; }
+.revs .rlist { display: grid; gap: 12px; }
+.revs .ritem { background: var(--white); border: 1px solid var(--grid); border-radius: var(--r2); padding: 12px; display: grid; gap: 8px; }
+.revs .rrow { display: grid; grid-template-columns: 1fr 120px 150px auto; gap: 8px; }
+.revs .rgen { align-items: flex-start; font-size: 14px; }
+.revs .row { display: flex; gap: 12px; align-items: center; }
+.revs .field small { font-weight: 400; }
+@media (max-width: 640px) { .revs .rrow { grid-template-columns: 1fr 1fr; } }

@@ -133,3 +133,11 @@ Les données sont dans `./data` (ou `DATA_DIR`).
      SMTP_FROM=ili studio <noreply@ilidweb.uk>
      APP_URL=https://studio.ilidweb.uk
      ADMIN_NOTIFY_EMAIL=…       (optionnel : copie des messages des sites de l'admin)
+
+## Avis clients
+
+- Dans un thème : un bloc `data-ili-reviews` contenant une carte modèle `data-ili-review` avec `data-ili-review-rating`, `-text`,
+  `-author`, `-date`, `-source` et `a[data-ili-review-link]` ; en option `data-ili-reviews-summary` et `a[data-ili-reviews-cta]`.
+- Dans l'éditeur, le bouton **★ Reviews** (visible si le site a un bloc d'avis) : le client choisit la plateforme (Google, Trustpilot,
+  Facebook, Checkatrade, TrustATrader, Yell…), puis ajoute ses avis lui-même (affichés dans le design du thème, avec confirmation
+  qu'ils sont authentiques) ou colle le widget officiel de la plateforme (scripts et iframes acceptés uniquement depuis des plateformes connues).

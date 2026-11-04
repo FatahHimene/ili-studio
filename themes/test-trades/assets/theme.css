@@ -29,3 +29,10 @@ h1, h2, h3 { font-family: var(--ili-font-head); line-height: 1.15; margin: 0 0 1
 .form button { justify-self: start; border: 0; cursor: pointer; font: inherit; }
 .form .small { font-size: 14px; color: color-mix(in srgb, var(--ili-ink) 65%, transparent); margin: 0; }
 @media (max-width: 640px) { .form .row2 { grid-template-columns: 1fr; } }
+
+.reviews { padding: 72px 24px; } .rsum { font-weight: 700; color: var(--ili-primary); }
+.rgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; margin: 24px 0; }
+.review { background: var(--ili-soft); border-radius: var(--ili-radius); padding: 22px; } .review .stars { color: var(--ili-accent); font-size: 20px; letter-spacing: 2px; }
+.review .who { font-size: 14px; margin: 0; } .review a { color: var(--ili-primary); }
+.ili-reviews-widget { margin: 24px 0; }
+.review .who > :not([hidden]) ~ :not([hidden])::before { content: ' · '; color: color-mix(in srgb, var(--ili-ink) 50%, transparent); }

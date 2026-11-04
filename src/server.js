@@ -19,6 +19,7 @@ import { requireAuth, requireAdmin, login, signup, logout, currentUser, frameTok
 import * as users from './users.js';
 import { prepareForms, receive, emailText, listMessages, updateMessage, deleteMessage, thanksPage } from './forms.js';
 import { sendMail, mailEnabled } from './mail.js';
+import { PLATFORMS, cleanReviews, renderReviews, hasReviewsBlock } from './reviews.js';
 import { PLANS, planOf, COSTS, FREE_DOMAIN, RESERVED } from './plans.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -730,6 +731,30 @@ async function serveSite(sub, parts, res) {
   corsOk(res);
   res.sendFile(file);
 }
+// ---- reviews -----------------------------------------------------------------------------------
+app.get('/api/sites/:id/reviews', requireAuth, wrap(async (req, res) => {
+  const meta = await siteFor(req);
+  const pages = [];
+  for (const p of meta.pages) { if (hasReviewsBlock(await fs.readFile(store.safeJoin(store.draftDir(meta.id), p), 'utf8').catch(() => ''))) pages.push(p); }
+  res.json({ reviews: meta.reviews || null, pages, platforms: Object.fromEntries(Object.entries(PLATFORMS).map(([k, v]) => [k, v.name])) });
+}));
+app.post('/api/sites/:id/reviews', requireAuth, wrap(async (req, res) => {
+  const meta = await siteFor(req);
+  let rv;
+  try { rv = cleanReviews(req.body); } catch (e) { return res.status(400).json({ error: e.message }); }
+  let changed = 0;
+  for (const p of meta.pages) {
+    const f = store.safeJoin(store.draftDir(meta.id), p);
+    const before = await fs.readFile(f, 'utf8');
+    const after = tag(renderReviews(before, rv));
+    if (after !== before) { await store.pushHistory(meta.id, p, before); await fs.writeFile(f, after); changed++; }
+  }
+  const m = await store.readMeta(meta.id);
+  m.reviews = rv; m.updatedAt = new Date().toISOString(); if (changed) m.dirty = true;
+  await store.writeMeta(meta.id, m);
+  res.json({ ok: true, reviews: rv, pages: changed });
+}));
+
 // ---- contact forms ---------------------------------------------------------------------------
 const publishedBySub = async (sub) => (await store.listSites()).find((s) => s.publishedAt && (s.subdomain === sub || (!s.subdomain && s.slug === sub)));
 async function handleForm(sub, req, res) {

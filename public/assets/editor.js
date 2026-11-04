@@ -640,3 +640,99 @@ $('#colOpts').onclick = async (e) => {
 loadPalettes();
 
 init().catch((e) => toast(esc(e.message), true));
+
+
+// ---- customer reviews -------------------------------------------------------------------------
+const WIDGET_HELP = {
+  trustpilot: 'In Trustpilot Business, open Integrations → TrustBox widgets, choose a widget and copy its code.',
+  google: 'Google has no official widget. Add your best Google reviews yourself (recommended), or paste a widget from a service such as Elfsight or Trustindex.',
+  facebook: 'Facebook has no simple review widget. Add your reviews yourself, or use a service such as Elfsight or Trustindex.',
+  checkatrade: 'In your Checkatrade account, look for “Website widgets” and copy the code.',
+  trustatrader: 'In your TrustATrader account, look for the website widget and copy the code.',
+  feefo: 'In Feefo Hub, open the widget settings and copy the embed code.',
+  reviewsio: 'In your Reviews.io dashboard, open Integrations → Widgets and copy the code.',
+};
+async function loadReviewsBtn() {
+  try { const d = await api('/reviews'); $('#revBtn').hidden = !d.pages.length; return d; } catch { return null; }
+}
+$('#revBtn').onclick = async () => {
+  const d = await api('/reviews');
+  const rv = d.reviews || { platform: 'google', mode: 'manual', items: [], profileUrl: '', reviewUrl: '', overall: null, count: null, widget: '', genuine: false };
+  const st = JSON.parse(JSON.stringify(rv));
+  const wrap = document.createElement('div'); wrap.className = 'omodal';
+  const opts = (sel) => Object.entries(d.platforms).map(([k, v]) => `<option value="${k}" ${k === sel ? 'selected' : ''}>${esc(v)}</option>`).join('');
+  wrap.innerHTML = `<div class="osheet revs" role="dialog" aria-modal="true" aria-label="Customer reviews">
+    <div class="ohead"><h2>Customer reviews</h2><button class="btn btn-sm" type="button" data-close aria-label="Close">✕</button></div>
+    <p class="ointro">Show your real reviews in your site's own design. Choose where they come from, then add them yourself or paste the platform's widget.</p>
+    <div class="rgrid">
+      <label class="field"><span>Review platform</span><select class="input" id="rvPlat">${opts(st.platform)}</select></label>
+      <label class="field"><span>Your page on this platform</span><input class="input" id="rvProfile" placeholder="https://…" value="${esc(st.profileUrl)}"></label>
+      <label class="field"><span>Link to leave a review <small class="muted">(optional)</small></span><input class="input" id="rvLeave" placeholder="https://g.page/r/…" value="${esc(st.reviewUrl)}"></label>
+    </div>
+    <div class="seg rmode" role="group" aria-label="How to add reviews"><button type="button" data-m="manual">Add my reviews</button><button type="button" data-m="widget">Use the platform's widget</button></div>
+    <section id="rvManual">
+      <div class="rgrid">
+        <label class="field"><span>Overall rating <small class="muted">(optional)</small></span><input class="input" id="rvOverall" type="number" min="1" max="5" step="0.1" placeholder="4.9" value="${st.overall ?? ''}"></label>
+        <label class="field"><span>Number of reviews <small class="muted">(optional)</small></span><input class="input" id="rvCount" type="number" min="0" placeholder="120" value="${st.count ?? ''}"></label>
+      </div>
+      <div id="rvList" class="rlist"></div>
+      <button class="btn btn-sm" type="button" id="rvAdd">+ Add a review</button>
+      <label class="check rgen"><input type="checkbox" id="rvGenuine" ${st.genuine ? 'checked' : ''}> These are genuine reviews from real customers, copied without changes. <span class="muted">(Fake reviews are illegal in the UK.)</span></label>
+    </section>
+    <section id="rvWidget" hidden>
+      <p class="muted small" id="rvHelp"></p>
+      <textarea class="input mono" id="rvCode" rows="6" placeholder="Paste the widget code here">${esc(st.widget)}</textarea>
+      <p class="muted small">Widgets keep the platform's own design. Only code from known review platforms is accepted.</p>
+    </section>
+    <div class="row"><button class="btn btn-primary" type="button" id="rvSave">Save reviews</button><span class="muted small" id="rvMsg"></span></div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const q = (s) => wrap.querySelector(s);
+  const close = () => wrap.remove();
+  wrap.addEventListener('click', (e) => { if (e.target === wrap || e.target.closest('[data-close]')) close(); });
+  const today = new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  const renderList = () => {
+    q('#rvList').innerHTML = st.items.length ? st.items.map((r, i) => `<div class="ritem" data-i="${i}">
+      <div class="rrow"><input class="input" data-k="author" placeholder="Customer name" value="${esc(r.author)}" maxlength="80">
+        <select class="input" data-k="rating">${[5, 4, 3, 2, 1].map((n) => `<option value="${n}" ${Number(r.rating) === n ? 'selected' : ''}>${'★'.repeat(n)}</option>`).join('')}</select>
+        <input class="input" data-k="date" placeholder="${esc(today)}" value="${esc(r.date)}" maxlength="30">
+        <button class="btn btn-sm btn-danger" type="button" data-del aria-label="Remove this review">✕</button></div>
+      <textarea class="input" data-k="text" rows="3" placeholder="The review, word for word" maxlength="1200">${esc(r.text)}</textarea>
+      <input class="input" data-k="link" placeholder="Link to this review (optional, lets visitors check it)" value="${esc(r.link)}">
+    </div>`).join('') : '<p class="muted small">No reviews yet. Add your favourite ones: 3 to 6 short reviews work best.</p>';
+  };
+  const setMode = (m) => {
+    st.mode = m;
+    wrap.querySelectorAll('[data-m]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.m === m)));
+    q('#rvManual').hidden = m !== 'manual'; q('#rvWidget').hidden = m !== 'widget';
+  };
+  const help = () => { q('#rvHelp').textContent = WIDGET_HELP[q('#rvPlat').value] || 'Copy the website widget code from your account on this platform and paste it below.'; };
+  renderList(); setMode(st.mode); help();
+  q('#rvPlat').onchange = help;
+  wrap.querySelectorAll('[data-m]').forEach((b) => b.onclick = () => setMode(b.dataset.m));
+  q('#rvList').addEventListener('input', (e) => { const it = e.target.closest('.ritem'); if (it && e.target.dataset.k) st.items[it.dataset.i][e.target.dataset.k] = e.target.value; });
+  q('#rvList').addEventListener('click', (e) => { const b = e.target.closest('[data-del]'); if (b) { st.items.splice(Number(b.closest('.ritem').dataset.i), 1); renderList(); } });
+  q('#rvAdd').onclick = () => {
+    if (st.items.length >= 30) return;
+    st.items.push({ author: '', rating: 5, date: '', text: '', link: '', source: q('#rvPlat').value }); renderList();
+    q('#rvList .ritem:last-child [data-k="author"]').focus();
+  };
+  q('#rvSave').onclick = async () => {
+    const btn = q('#rvSave'); btn.disabled = true; q('#rvMsg').textContent = 'Saving…';
+    const body = {
+      platform: q('#rvPlat').value, profileUrl: q('#rvProfile').value, reviewUrl: q('#rvLeave').value, mode: st.mode,
+      overall: q('#rvOverall').value, count: q('#rvCount').value, genuine: q('#rvGenuine').checked, widget: q('#rvCode').value,
+      items: st.items.filter((r) => String(r.text).trim() || String(r.author).trim()).map((r) => ({ ...r, source: q('#rvPlat').value })),
+    };
+    const half = body.items.find((r) => !String(r.text).trim() || !String(r.author).trim());
+    if (body.mode === 'manual' && half) { q('#rvMsg').textContent = 'Each review needs a name and a text.'; btn.disabled = false; return; }
+    try {
+      const r = await api('/reviews', { method: 'POST', body: JSON.stringify(body) });
+      state.meta.dirty = true; setStatus(); loadFrame(); close();
+      toast(r.reviews.mode === 'widget' ? 'Review widget added' : `${r.reviews.items.length} review${r.reviews.items.length === 1 ? '' : 's'} saved · <a href="#" id="tUndoRv">Undo</a>`);
+      setTimeout(() => { const u = document.getElementById('tUndoRv'); if (u) u.onclick = (ev) => { ev.preventDefault(); undo(); }; }, 0);
+      api(`?page=${encodeURIComponent(state.page)}`).then((x) => { $('#undo').disabled = !x.undo; });
+    } catch (e) { q('#rvMsg').textContent = e.message; btn.disabled = false; }
+  };
+};
+loadReviewsBtn();
