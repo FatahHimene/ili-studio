@@ -33,6 +33,8 @@ async function loadMe() {
 async function load() {
   const r = await fetch('/api/sites'); if (r.status === 401) { location.href = '/login'; return; }
   sites = await r.json();
+  const unread = sites.reduce((n, s) => n + (s.unread || 0), 0);
+  $('#msgTab').innerHTML = unread ? `Messages <span class="tag tag-live">${unread}</span>` : 'Messages';
   grid.querySelectorAll('.card').forEach((c) => c.remove());
   $('#empty').hidden = sites.length > 0;
   for (const s of sites) {
@@ -43,7 +45,7 @@ async function load() {
     el.innerHTML = `
       <a class="thumb" href="/editor/${s.id}" aria-label="Edit ${esc(s.name)}"><iframe loading="lazy" sandbox="allow-scripts" tabindex="-1" title="" scrolling="no"></iframe></a>
       <div class="meta"><h3>${esc(s.name)}</h3>
-        <div class="facts">${status}<span>${s.pages.length} page${s.pages.length > 1 ? 's' : ''}</span>${origin}<span>· edited ${ago(s.updatedAt)}</span>${s.ownerEmail !== undefined ? `<span>· ${esc(s.ownerEmail || 'you')}</span>` : ''}</div>
+        <div class="facts">${status}<span>${s.pages.length} page${s.pages.length > 1 ? 's' : ''}</span>${origin}<span>· edited ${ago(s.updatedAt)}</span>${s.unread ? `<a class="tag tag-live" href="/messages">${s.unread} new message${s.unread > 1 ? 's' : ''}</a>` : ''}${s.ownerEmail !== undefined ? `<span>· ${esc(s.ownerEmail || 'you')}</span>` : ''}</div>
         ${s.publishedAt && s.subdomain ? `<div class="facts"><span class="mono">${esc(s.subdomain)}.${esc(me.freeDomain || '')}</span></div>` : ''}</div>
       <div class="acts">
         <a class="btn btn-sm btn-dark" href="/editor/${s.id}">Edit</a>

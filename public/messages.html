@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Messages · ili studio</title>
+  <link rel="icon" href="/_ili/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/_ili/app.css" />
+  <link rel="stylesheet" href="/_ili/shell.css" />
+  <style>
+    .note { margin: 0 0 24px; padding: 12px 14px; background: var(--white); border: 1px solid var(--grid); border-left: 6px solid var(--signal); border-radius: var(--r); font-size: 14px; max-width: 760px; }
+    .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+    .list { display: grid; gap: 12px; max-width: 900px; }
+    .msg { background: var(--white); border: 1px solid var(--ink); border-radius: var(--r2); padding: 18px 20px; display: grid; gap: 10px; }
+    .msg.unread { box-shadow: 5px 5px 0 var(--signal); }
+    .msg.read { border-color: var(--grid); }
+    .mh { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+    .mh b { font: 700 18px var(--display); }
+    .mh .when { margin-left: auto; font: 400 12px var(--mono); color: var(--slate); }
+    .fields { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 14px; margin: 0; }
+    .fields dt { color: var(--slate); }
+    .fields dd { margin: 0; overflow-wrap: anywhere; }
+    .body { white-space: pre-wrap; margin: 0; padding: 12px 14px; background: var(--paper); border-radius: var(--r); font-size: 15px; overflow-wrap: anywhere; }
+    .acts { padding: 0; }
+    .empty { max-width: 640px; }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <a class="logo" href="/"><span class="i"><span class="cur"></span>ı</span>li studio</a>
+    <nav class="tabs"><a href="/">Sites</a><a href="/messages" aria-current="page">Messages</a></nav>
+    <form method="post" action="/logout" style="margin-left:auto"><button class="btn btn-sm" type="submit">Sign out</button></form>
+  </header>
+  <main>
+    <div class="head"><div><span class="label">Contact forms</span><h1>Messages</h1></div></div>
+    <p class="note" id="note"></p>
+    <div class="filters" id="filters"></div>
+    <div class="list" id="list"></div>
+  </main>
+  <div class="toast" id="toast" role="status"></div>
+  <script type="module">
+    const $ = (s) => document.querySelector(s);
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const LABEL = { name: 'Name', email: 'Email', phone: 'Phone', subject: 'Subject', company: 'Company', postcode: 'Postcode', service: 'Service' };
+    let data = { messages: [] }; let filter = 'all';
+    async function load() {
+      const r = await fetch('/api/messages'); if (r.status === 401) { location.href = '/login'; return; }
+      data = await r.json(); render();
+    }
+    function render() {
+      $('#note').innerHTML = data.mail && data.email
+        ? `A copy of every message is also e-mailed to <b>${esc(data.email)}</b>. Reply to that e-mail to answer your visitor directly.`
+        : 'Messages sent from the contact forms on your published sites appear here. E-mail copies will be switched on very soon.';
+      const sites = [...new Map(data.messages.map((m) => [m.site, m.siteName])).entries()];
+      $('#filters').innerHTML = [['all', 'All'], ['unread', 'Unread'], ...sites].map(([k, v]) => `<button class="btn btn-sm${filter === k ? ' btn-dark' : ''}" data-f="${esc(k)}" type="button">${esc(v)}</button>`).join('');
+      const list = data.messages.filter((m) => !m.spam && (filter === 'all' || (filter === 'unread' ? !m.read : m.site === filter)));
+      $('#list').innerHTML = list.length ? list.map((m) => {
+        const f = m.fields || {};
+        const extra = Object.entries(f).filter(([k]) => !['name', 'message'].includes(k));
+        return `<article class="msg ${m.read ? 'read' : 'unread'}" data-site="${esc(m.site)}" data-id="${esc(m.id)}">
+          <div class="mh"><b>${esc(f.name || 'Someone')}</b><span class="tag">${esc(m.siteName || '')}</span>${m.read ? '' : '<span class="tag tag-live">New</span>'}<span class="when">${new Date(m.at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span></div>
+          ${extra.length ? `<dl class="fields">${extra.map(([k, v]) => `<dt>${esc(LABEL[k] || k)}</dt><dd>${k === 'email' ? `<a href="mailto:${esc(v)}">${esc(v)}</a>` : k === 'phone' ? `<a href="tel:${esc(v.replace(/[^\d+]/g, ''))}">${esc(v)}</a>` : esc(v)}</dd>`).join('')}</dl>` : ''}
+          ${f.message ? `<p class="body">${esc(f.message)}</p>` : ''}
+          <div class="acts">
+            ${f.email ? `<a class="btn btn-sm btn-primary" href="mailto:${esc(f.email)}?subject=${encodeURIComponent('Re: your message to ' + (m.siteName || 'us'))}">Reply by e-mail</a>` : ''}
+            <button class="btn btn-sm" data-act="read" type="button">${m.read ? 'Mark as unread' : 'Mark as read'}</button>
+            <button class="btn btn-sm btn-danger del" data-act="del" type="button">Delete</button>
+          </div></article>`;
+      }).join('') : `<p class="muted empty">${data.messages.length ? 'No message here.' : 'No messages yet. When visitors use the contact form on your published site, their messages appear here.'}</p>`;
+    }
+    $('#filters').onclick = (e) => { const b = e.target.closest('[data-f]'); if (b) { filter = b.dataset.f; render(); } };
+    $('#list').onclick = async (e) => {
+      const b = e.target.closest('[data-act]'); if (!b) return;
+      const card = b.closest('.msg'); const m = data.messages.find((x) => x.id === card.dataset.id && x.site === card.dataset.site);
+      if (b.dataset.act === 'read') {
+        await fetch(`/api/messages/${m.site}/${m.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ read: !m.read }) });
+        m.read = !m.read; render();
+      } else {
+        if (b.dataset.confirm !== '1') { b.dataset.confirm = '1'; b.textContent = 'Click to confirm'; setTimeout(() => { b.dataset.confirm = ''; b.textContent = 'Delete'; }, 2500); return; }
+        await fetch(`/api/messages/${m.site}/${m.id}`, { method: 'DELETE' });
+        data.messages = data.messages.filter((x) => x !== m); render();
+      }
+    };
+    load();
+  </script>
+</body>
+</html>

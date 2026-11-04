@@ -116,3 +116,20 @@ Les données sont dans `./data` (ou `DATA_DIR`).
 - Publication : le client choisit son adresse `nom.yela.uk`. En Free, seule la page d'accueil est publiée (les liens vers les autres pages
   sont retirés), avec un petit lien « Website made with ili studio by Ilidweb » en bas.
 - Les sites gratuits sont servis directement selon le nom d'hôte `*.FREE_DOMAIN` (DNS : `*` et `@` vers l'IP du serveur).
+
+## Formulaires de contact
+
+- Dans un thème : `<form data-ili-form="contact">` avec des champs nommés (`name`, `email`, `phone`, `message`…).
+  À la publication, le formulaire est envoyé à `_form` sur le même domaine que le site, avec un champ piège anti-robots.
+- Les messages arrivent dans **Messages** (tableau de bord du client) et une copie part par e-mail à l'adresse du compte client
+  (« Répondre » écrit directement au visiteur). Si le thème a une page `thanks.html`, le visiteur y est redirigé.
+- Limites : 5 envois par connexion et par 10 minutes, 60 messages par site et par jour.
+- Variables d'environnement pour l'e-mail (n'importe quel compte SMTP, par exemple `noreply@ilidweb.uk` créé dans DirectAdmin) :
+
+     SMTP_HOST=mail.ilidweb.uk
+     SMTP_PORT=587
+     SMTP_USER=noreply@ilidweb.uk
+     SMTP_PASS=…                (dans CapRover uniquement)
+     SMTP_FROM=ili studio <noreply@ilidweb.uk>
+     APP_URL=https://studio.ilidweb.uk
+     ADMIN_NOTIFY_EMAIL=…       (optionnel : copie des messages des sites de l'admin)

@@ -17,6 +17,8 @@ import { listThemes, getTheme, publicTheme, installTheme, removeTheme, restoreTh
 import { personalise, cleanBrief } from './personalise.js';
 import { requireAuth, requireAdmin, login, signup, logout, currentUser, frameToken, checkFrameToken } from './auth.js';
 import * as users from './users.js';
+import { prepareForms, receive, emailText, listMessages, updateMessage, deleteMessage, thanksPage } from './forms.js';
+import { sendMail, mailEnabled } from './mail.js';
 import { PLANS, planOf, COSTS, FREE_DOMAIN, RESERVED } from './plans.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -41,8 +43,9 @@ app.use((req, res, next) => {
   const host = String(req.hostname || '').toLowerCase();
   if (host === FREE_DOMAIN || host === 'www.' + FREE_DOMAIN) return res.redirect(302, 'https://ilidweb.uk/ili-studio/');
   if (!host.endsWith('.' + FREE_DOMAIN)) return next();
-  if (req.method !== 'GET' && req.method !== 'HEAD') return res.status(405).send('Method not allowed');
   const sub = host.slice(0, -FREE_DOMAIN.length - 1);
+  if (req.method === 'POST' && req.path === '/_form') return handleForm(sub, req, res).catch(next);
+  if (req.method !== 'GET' && req.method !== 'HEAD') return res.status(405).send('Method not allowed');
   const parts = decodeURIComponent(req.path).split('/').filter(Boolean);
   serveSite(sub, parts, res).catch(next);
 });
@@ -135,7 +138,9 @@ app.get('/api/sites', requireAuth, wrap(async (req, res) => {
     const emails = new Map((await users.list()).map((u) => [u.id, u.email]));
     return res.json(all.map((s) => ({ ...s, ownerEmail: s.owner ? emails.get(s.owner) || '?' : null })));
   }
-  res.json(all.filter((s) => s.owner === req.user.id));
+  const mine = all.filter((s) => s.owner === req.user.id);
+  const msgs = await listMessages(mine.map((s) => s.id));
+  res.json(mine.map((s) => ({ ...s, unread: msgs.filter((m) => m.site === s.id && !m.read && !m.spam).length })));
 }));
 
 app.post('/api/sites', requireAuth, upload.single('file'), wrap(async (req, res) => {
@@ -651,6 +656,7 @@ app.post('/api/sites/:id/publish', requireAuth, wrap(async (req, res) => {
     if (!live.includes(page)) { await fs.rm(f, { force: true }); continue; }
     let html = strip(await fs.readFile(f, 'utf8'));
     if (locked.length) html = unlinkPages(html, page, locked);
+    html = prepareForms(html);
     if (req.user.role !== 'admin' && planOf(req.user).id === 'free') html = addBadge(html, sub);
     await fs.writeFile(f, html);
   }
@@ -724,6 +730,46 @@ async function serveSite(sub, parts, res) {
   corsOk(res);
   res.sendFile(file);
 }
+// ---- contact forms ---------------------------------------------------------------------------
+const publishedBySub = async (sub) => (await store.listSites()).find((s) => s.publishedAt && (s.subdomain === sub || (!s.subdomain && s.slug === sub)));
+async function handleForm(sub, req, res) {
+  const site = await publishedBySub(sub);
+  res.setHeader('Content-Security-Policy', SANDBOX);
+  if (!site) return res.status(404).send('Site not found');
+  let r;
+  try { r = await receive(site, req.body, req.ip); }
+  catch (e) { return res.status(400).type('html').send(thanksPage(site, e.message)); }
+  if (!r.spam) {
+    const owner = site.owner ? await users.get(site.owner) : null;
+    const to = owner && owner.role !== 'admin' ? owner.email : process.env.ADMIN_NOTIFY_EMAIL;
+    if (to) {
+      const f = r.message.fields;
+      sendMail({ to, subject: `New message from your website${f.name ? ': ' + f.name.slice(0, 60) : ''}`, text: emailText(site, r.message, process.env.APP_URL), replyTo: f.email })
+        .then((sent) => { if (sent) console.log(`[form] ${site.id} message e-mailed to owner`); })
+        .catch((e) => console.error(`[form] ${site.id} e-mail failed:`, e.message));
+    }
+  } else console.warn(`[form] ${site.id} spam ignored`);
+  if (fss.existsSync(path.join(store.publishedDir(site.id), 'thanks.html'))) return res.redirect(303, 'thanks.html');
+  res.type('html').send(thanksPage(site));
+}
+app.post('/s/:slug/_form', wrap(async (req, res) => handleForm(req.params.slug, req, res)));
+
+app.get('/messages', requireAuth, (req, res) => send(res, 'messages.html'));
+app.get('/api/messages', requireAuth, wrap(async (req, res) => {
+  const sites = (await store.listSites()).filter((s) => req.user.role === 'admin' || s.owner === req.user.id);
+  const names = new Map(sites.map((s) => [s.id, s.name]));
+  const list = await listMessages(sites.map((s) => s.id));
+  res.json({ mail: mailEnabled(), email: req.user.role === 'admin' ? process.env.ADMIN_NOTIFY_EMAIL || null : req.user.email, messages: list.map((m) => ({ ...m, siteName: names.get(m.site) })) });
+}));
+app.patch('/api/messages/:id/:msg', requireAuth, wrap(async (req, res) => {
+  await siteFor(req);
+  try { res.json(await updateMessage(req.params.id, req.params.msg, { read: !!req.body.read })); } catch { res.status(404).json({ error: 'Message not found' }); }
+}));
+app.delete('/api/messages/:id/:msg', requireAuth, wrap(async (req, res) => {
+  await siteFor(req);
+  try { await deleteMessage(req.params.id, req.params.msg); res.json({ ok: true }); } catch { res.status(404).json({ error: 'Message not found' }); }
+}));
+
 app.get('/s/:slug', (req, res, next) => (req.originalUrl.endsWith('/') ? next() : res.redirect(301, `/s/${req.params.slug}/`)));
 app.get('/s/:slug/{*path}', wrap(async (req, res) => serveSite(req.params.slug, req.params.path, res)));
 
