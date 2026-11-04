@@ -1,5 +1,15 @@
 /* Plan cards (welcome screen, editor modals) */
-.offers { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; align-items: stretch; }
+.offers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; align-items: stretch; }
+@media (max-width: 860px) { .offers { grid-template-columns: 1fr; max-width: 520px; margin: 0 auto; } }
+.ofree { margin-top: 18px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 22px; background: var(--white); border: 1px dashed var(--ink); border-radius: var(--r2); }
+.ofree .fh { margin: 0 0 6px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.ofree .fh b { font: 700 20px var(--display); }
+.ofree .fh span { font: 400 12px var(--mono); color: var(--slate); }
+.ofree .sum { margin: 0 0 8px; color: var(--slate); font-size: 14px; }
+.ofree ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; }
+.ofree li::before { content: '+'; font-family: var(--mono); margin-right: 6px; color: var(--signal-deep); font-weight: 700; }
+.ofree .btn { flex-shrink: 0; }
+@media (max-width: 760px) { .ofree { flex-direction: column; align-items: stretch; } }
 .offer { position: relative; background: var(--white); border: 1px solid var(--ink); border-radius: var(--r2); padding: 22px 20px; display: flex; flex-direction: column; gap: 12px; }
 .offer.featured { box-shadow: 6px 6px 0 var(--signal); }
 .offer.current { border-style: dashed; }

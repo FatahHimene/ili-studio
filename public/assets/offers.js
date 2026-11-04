@@ -17,9 +17,10 @@ export async function getPlans() {
  */
 export async function renderOffers(el, opts = {}) {
   const { plans } = await getPlans();
-  const list = opts.only === 'paid' ? plans.filter((p) => p.price > 0) : plans;
-  el.classList.add('offers');
-  el.innerHTML = list.map((p) => `
+  const list = plans.filter((p) => p.price > 0);
+  const free = opts.only === 'paid' ? null : plans.find((p) => p.price === 0);
+  el.classList.add('offers-wrap');
+  el.innerHTML = `<div class="offers">${list.map((p) => `
     <article class="offer${p.featured ? ' featured' : ''}${opts.current === p.id ? ' current' : ''}">
       ${p.featured ? '<span class="ribbon">Most chosen</span>' : ''}
       <h3>${esc(p.name)}</h3>
@@ -29,7 +30,13 @@ export async function renderOffers(el, opts = {}) {
       <button class="btn ${p.price ? (p.featured ? 'btn-primary' : 'btn-dark') : ''}" type="button" data-plan="${p.id}" ${opts.current === p.id ? 'disabled' : ''}>
         ${opts.current === p.id ? 'Your plan' : esc(p.price ? (opts.paidLabel || `Choose ${p.name}`) : (opts.freeLabel || 'Start free'))}
       </button>
-    </article>`).join('');
+    </article>`).join('')}</div>${free ? `
+    <div class="ofree${opts.current === free.id ? ' current' : ''}">
+      <div><p class="fh"><b>${esc(free.name)}</b><span>£0 · free for good, no card needed</span></p>
+        <p class="sum">${esc(free.summary)}</p>
+        <ul>${free.features.map((f) => `<li>${esc(f)}</li>`).join('')}</ul></div>
+      <button class="btn" type="button" data-plan="${free.id}" ${opts.current === free.id ? 'disabled' : ''}>${opts.current === free.id ? 'Your plan' : esc(opts.freeLabel || 'Start free')} →</button>
+    </div>` : ''}`;
   el.onclick = (e) => { const b = e.target.closest('[data-plan]'); if (b && opts.onPick) opts.onPick(b.dataset.plan, b); };
 }
 
