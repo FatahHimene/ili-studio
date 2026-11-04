@@ -1,3 +1,4 @@
+import { themeFilter, noMatch } from './theme-filter.js';
 const $ = (s) => document.querySelector(s);
 const grid = $('#grid');
 const drop = $('#drop');
@@ -91,25 +92,24 @@ drop.addEventListener('submit', (e) => e.preventDefault());
 
 // ---- new site from a theme -------------------------------------------------------------------
 const modal = $('#modal');
-let themes = []; let chosen = null; let cat = 'All';
+let themes = []; let chosen = null;
 function step(name) {
   $('#stepTheme').hidden = name !== 'theme'; $('#stepBrief').hidden = name !== 'brief'; $('#stepWork').hidden = name !== 'work';
   $('#mTitle').textContent = { theme: 'Choose a theme', brief: 'Tell Wren about your business', work: 'Creating your site' }[name];
   $('#mSteps').innerHTML = ['1 Theme', '2 Your business', '3 Personalise'].map((s, i) => (i === ['theme', 'brief', 'work'].indexOf(name) ? `<b>${s}</b>` : s)).join(' · ');
   $('#mClose').hidden = name === 'work';
 }
-function renderThemes() {
-  const cats = ['All', ...new Set(themes.map((t) => t.category))];
-  $('#cats').innerHTML = cats.map((c) => `<button type="button" aria-pressed="${c === cat}">${esc(c)}</button>`).join('');
-  const list = themes.filter((t) => cat === 'All' || t.category === cat);
-  $('#tgrid').innerHTML = list.length ? list.map((t) => `
+const picker = themeFilter({
+  input: $('#tq'), cats: $('#cats'), count: $('#tcount'),
+  render(list, f) {
+    $('#tgrid').innerHTML = !themes.length ? '<p class="muted">No themes yet. Add one in Themes.</p>' : !list.length ? noMatch(f) : list.map((t) => `
     <article class="tpick">
       <a class="thumb" href="/theme-files/${t.id}/index.html" target="_blank" rel="noopener" aria-label="Preview ${esc(t.name)}">${t.preview ? `<img src="/theme-files/${t.id}/${esc(t.preview)}" alt="">` : `<iframe loading="lazy" sandbox="allow-scripts" tabindex="-1" title="" scrolling="no" src="/theme-files/${t.id}/index.html"></iframe>`}</a>
       <div class="meta"><h3>${esc(t.name)}</h3><div class="facts"><span class="tag">${esc(t.category)}</span><span>${t.pages.length} pages</span></div><p>${esc(t.description)}</p></div>
       <div class="acts"><a class="btn btn-sm" href="/theme-files/${t.id}/index.html" target="_blank" rel="noopener">Preview ↗</a><button class="btn btn-sm btn-primary pick" data-id="${esc(t.id)}" type="button">Use this theme →</button></div>
-    </article>`).join('') : '<p class="muted">No themes yet. Add one in Themes.</p>';
-}
-$('#cats').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { cat = b.textContent; renderThemes(); } });
+    </article>`).join('');
+  },
+});
 $('#tgrid').addEventListener('click', (e) => {
   const b = e.target.closest('.pick'); if (!b) return;
   chosen = themes.find((t) => t.id === b.dataset.id);
@@ -126,7 +126,7 @@ $('#stepBrief').addEventListener('change', (e) => {
 $('#fromTheme').onclick = async () => {
   if (me.role !== 'admin' && sites.length >= (me.planInfo?.drafts || 3)) return toast(`Your ${esc(me.planInfo.name)} plan allows ${me.planInfo.drafts} sites in progress. Delete one to start another.`, true);
   modal.hidden = false; step('theme');
-  const r = await fetch('/api/themes'); themes = await r.json(); renderThemes();
+  const r = await fetch('/api/themes'); themes = await r.json(); picker.reset(); picker.set(themes); $('#tq').focus();
 };
 const close = () => { modal.hidden = true; };
 $('#mClose').onclick = close;

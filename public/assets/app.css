@@ -62,3 +62,18 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -0.0
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
 .toast a { color: var(--signal); }
 .toast.err { box-shadow: 6px 6px 0 var(--danger); }
+
+/* Theme search + category chips (theme picker and admin Themes) */
+.tfilter { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin-bottom: 16px; }
+.tsearch { position: relative; flex: 1 1 260px; max-width: 420px; }
+.tsearch input { width: 100%; font: 400 15px var(--body); padding: 10px 12px 10px 38px; min-height: 44px; border: 1px solid var(--ink); border-radius: var(--r); background: var(--white); color: var(--ink); }
+.tsearch input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.tsearch svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--slate); pointer-events: none; }
+.tcount { font: 500 12px var(--mono); color: var(--slate); }
+.cats { display: flex; gap: 6px; flex-wrap: wrap; }
+.cats[hidden] { display: none; }
+.cats button { font: 500 13px var(--body); border: 1px solid var(--ink); background: var(--white); color: var(--ink); border-radius: 999px; padding: 6px 12px; min-height: 36px; cursor: pointer; }
+.cats button .n { font: 500 11px var(--mono); opacity: .6; margin-left: 2px; }
+.cats button[aria-pressed='true'] { background: var(--ink); color: var(--paper); }
+.tnone { grid-column: 1 / -1; padding: 24px 0; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
