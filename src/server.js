@@ -1,6 +1,7 @@
 // ili studio prototype server.
 import express from 'express';
 import multer from 'multer';
+import compression from 'compression';
 import fs from 'node:fs/promises';
 import fss from 'node:fs';
 import path from 'node:path';
@@ -31,6 +32,7 @@ const PORT = Number(process.env.PORT || 3000);
 const app = express();
 app.set('trust proxy', true);
 app.disable('x-powered-by');
+app.use(compression());
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: false }));
 
@@ -194,6 +196,7 @@ app.patch('/api/sites/:id', requireAuth, wrap(async (req, res) => {
 app.delete('/api/sites/:id', requireAuth, wrap(async (req, res) => {
   await siteFor(req);
   await fs.rm(store.siteDir(req.params.id), { recursive: true, force: true });
+  invalidateSites();
   res.json({ ok: true });
 }));
 
@@ -673,6 +676,7 @@ app.post('/api/sites/:id/publish', requireAuth, wrap(async (req, res) => {
   meta.publishedAt = new Date().toISOString(); meta.dirty = false;
   meta.subdomain = sub; meta.livePages = live;
   await store.writeMeta(meta.id, meta);
+  invalidateSites();
   res.json({ ok: true, url: freeUrl(sub), preview: `/s/${sub}/`, publishedAt: meta.publishedAt, live, locked });
 }));
 
@@ -681,6 +685,7 @@ app.post('/api/sites/:id/unpublish', requireAuth, wrap(async (req, res) => {
   await fs.rm(store.publishedDir(meta.id), { recursive: true, force: true });
   meta.publishedAt = null; meta.livePages = [];
   await store.writeMeta(meta.id, meta);
+  invalidateSites();
   res.json({ ok: true });
 }));
 
@@ -725,8 +730,19 @@ app.get('/frame/:id/:token/{*path}', wrap(async (req, res) => {
 }));
 
 // ---- published sites ---------------------------------------------------------------
+// published sites by address, kept in memory (rebuilt at most every 15 s, or right after a publish)
+let siteIndex = { at: 0, map: new Map() };
+export function invalidateSites() { siteIndex.at = 0; }
+async function publishedSite(sub) {
+  if (Date.now() - siteIndex.at > 15000) {
+    const map = new Map();
+    for (const s of await store.listSites()) if (s.publishedAt) map.set(s.subdomain || s.slug, s);
+    siteIndex = { at: Date.now(), map };
+  }
+  return siteIndex.map.get(sub) || null;
+}
 async function serveSite(sub, parts, res) {
-  const site = (await store.listSites()).find((s) => s.publishedAt && (s.subdomain === sub || (!s.subdomain && s.slug === sub)));
+  const site = await publishedSite(sub);
   if (!site) return res.status(404).send('Site not found');
   const base = store.publishedDir(site.id);
   let file = store.safeJoin(base, (parts || []).join('/') || 'index.html');
@@ -734,7 +750,8 @@ async function serveSite(sub, parts, res) {
   if (!fss.existsSync(file) && fss.existsSync(file + '.html')) file += '.html';
   if (!fss.existsSync(file)) return res.status(404).send('Page not found');
   res.setHeader('Content-Security-Policy', SANDBOX);
-  res.setHeader('Cache-Control', 'no-cache');
+  // pages are always fresh; images, styles and fonts are kept by the browser for a day
+  res.setHeader('Cache-Control', /\.html?$/i.test(file) ? 'no-cache' : 'public, max-age=86400');
   corsOk(res);
   res.sendFile(file);
 }
@@ -895,7 +912,7 @@ app.post('/api/sites/:id/reviews', requireAuth, wrap(async (req, res) => {
 }));
 
 // ---- contact forms ---------------------------------------------------------------------------
-const publishedBySub = async (sub) => (await store.listSites()).find((s) => s.publishedAt && (s.subdomain === sub || (!s.subdomain && s.slug === sub)));
+const publishedBySub = (sub) => publishedSite(sub);
 async function handleForm(sub, req, res) {
   const site = await publishedBySub(sub);
   res.setHeader('Content-Security-Policy', SANDBOX);
