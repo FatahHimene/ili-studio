@@ -3,7 +3,7 @@
 # What: ili studio data volume (/data of the app), Coolify database, Coolify .env, proxy config and certificates, Coolify SSH keys.
 # Settings and secrets: /root/ili-backup/backup.env (chmod 600, never in git).
 set -Eeuo pipefail
-source /root/ili-backup/backup.env
+set -a; source /root/ili-backup/backup.env; set +a   # export the settings so restic sees them
 export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-auto}"
 
 ping() { [ -n "${HEALTHCHECK_URL:-}" ] && curl -fsS -m 10 "${HEALTHCHECK_URL}$1" >/dev/null || true; }
