@@ -1,0 +1,10 @@
+[Unit]
+Description=ilidweb nightly backup to Cloudflare R2
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/root/ili-backup/ili-backup.sh
+Nice=10
+IOSchedulingClass=idle
