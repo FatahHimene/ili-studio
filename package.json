@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "ili studio prototype: import, click-to-edit and publish websites",
   "scripts": {
-    "start": "node src/server.js",
+    "start": "node src/main.js",
     "dev": "node --watch src/server.js"
   },
   "repository": {

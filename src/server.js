@@ -25,6 +25,8 @@ import { PLATFORMS, cleanReviews, renderReviews, hasReviewsBlock } from './revie
 import { seoPage, seoFiles } from './seo.js';
 import { analyse, crawl, pagespeed } from './audit.js';
 import { PLANS, planOf, COSTS, FREE_DOMAIN, RESERVED } from './plans.js';
+import { remote, pushSite, removeSite, startSync, internalSecret } from './sitesync.js';
+import crypto from 'node:crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(__dirname, '..', 'public');
@@ -195,7 +197,11 @@ app.patch('/api/sites/:id', requireAuth, wrap(async (req, res) => {
 }));
 
 app.delete('/api/sites/:id', requireAuth, wrap(async (req, res) => {
-  await siteFor(req);
+  const meta = await siteFor(req);
+  if (meta.publishedAt) {
+    try { await removeSite(meta.subdomain || meta.slug, meta.id); }
+    catch (e) { console.error(`[delete] ${meta.id}:`, e.message); return res.status(502).json({ error: 'Could not take the site offline right now. Please try again in a minute.' }); }
+  }
   await fs.rm(store.siteDir(req.params.id), { recursive: true, force: true });
   invalidateSites();
   res.json({ ok: true });
@@ -672,9 +678,18 @@ app.post('/api/sites/:id/publish', requireAuth, wrap(async (req, res) => {
     await fs.writeFile(f, html);
   }
   await seoFiles(tmp, freeUrl(sub), seo);
+  const publishedAt = new Date().toISOString();
+  const oldSub = meta.publishedAt ? meta.subdomain || meta.slug : null;
+  try { await pushSite(tmp, sub, meta, publishedAt); }
+  catch (e) {
+    await fs.rm(tmp, { recursive: true, force: true });
+    console.error(`[publish] ${meta.id} → ili-sites failed:`, e.message);
+    return res.status(502).json({ error: 'Publishing is not available right now. Your changes are saved, please try again in a minute.' });
+  }
+  if (oldSub && oldSub !== sub) removeSite(oldSub, meta.id).catch((e) => console.error(`[publish] old address ${oldSub}:`, e.message));
   await fs.rm(store.publishedDir(meta.id), { recursive: true, force: true });
   await fs.rename(tmp, store.publishedDir(meta.id));
-  meta.publishedAt = new Date().toISOString(); meta.dirty = false;
+  meta.publishedAt = publishedAt; meta.dirty = false;
   meta.subdomain = sub; meta.livePages = live;
   await store.writeMeta(meta.id, meta);
   invalidateSites();
@@ -683,6 +698,10 @@ app.post('/api/sites/:id/publish', requireAuth, wrap(async (req, res) => {
 
 app.post('/api/sites/:id/unpublish', requireAuth, wrap(async (req, res) => {
   const meta = await siteFor(req);
+  if (meta.publishedAt) {
+    try { await removeSite(meta.subdomain || meta.slug, meta.id); }
+    catch (e) { console.error(`[unpublish] ${meta.id}:`, e.message); return res.status(502).json({ error: 'Could not take the site offline right now. Please try again in a minute.' }); }
+  }
   await fs.rm(store.publishedDir(meta.id), { recursive: true, force: true });
   meta.publishedAt = null; meta.livePages = [];
   await store.writeMeta(meta.id, meta);
@@ -913,14 +932,11 @@ app.post('/api/sites/:id/reviews', requireAuth, wrap(async (req, res) => {
 }));
 
 // ---- contact forms ---------------------------------------------------------------------------
-const publishedBySub = (sub) => publishedSite(sub);
-async function handleForm(sub, req, res) {
-  const site = await publishedBySub(sub);
-  res.setHeader('Content-Security-Policy', SANDBOX);
-  if (!site) return res.status(404).send('Site not found');
+/** Keep a form message and e-mail the owner. Returns what to show the visitor: { status, html } or { redirect }. */
+async function processForm(site, body, ip) {
   let r;
-  try { r = await receive(site, req.body, clientIp(req)); }
-  catch (e) { return res.status(400).type('html').send(thanksPage(site, e.message)); }
+  try { r = await receive(site, body, ip); }
+  catch (e) { return { status: 400, html: thanksPage(site, e.message) }; }
   if (!r.spam) {
     const owner = site.owner ? await users.get(site.owner) : null;
     const to = owner && owner.role !== 'admin' ? owner.email : process.env.ADMIN_NOTIFY_EMAIL;
@@ -931,9 +947,27 @@ async function handleForm(sub, req, res) {
         .catch((e) => console.error(`[form] ${site.id} e-mail failed:`, e.message));
     }
   } else console.warn(`[form] ${site.id} spam ignored`);
-  if (fss.existsSync(path.join(store.publishedDir(site.id), 'thanks.html'))) return res.redirect(303, 'thanks.html');
-  res.type('html').send(thanksPage(site));
+  if (fss.existsSync(path.join(store.publishedDir(site.id), 'thanks.html'))) return { redirect: 'thanks.html' };
+  return { status: 200, html: thanksPage(site) };
 }
+async function handleForm(sub, req, res) {
+  const site = await publishedSite(sub);
+  res.setHeader('Content-Security-Policy', SANDBOX);
+  if (!site) return res.status(404).send('Site not found');
+  const r = await processForm(site, req.body, clientIp(req));
+  if (r.redirect) return res.redirect(303, r.redirect);
+  res.status(r.status).type('html').send(r.html);
+}
+// ili-sites passes the forms of the sites it serves to this endpoint (authenticated with SITES_SECRET).
+app.post('/_internal/form', wrap(async (req, res) => {
+  const secret = internalSecret();
+  const got = Buffer.from(String(req.headers.authorization || '').replace(/^Bearer /, ''));
+  if (!secret || got.length !== secret.length || !crypto.timingSafeEqual(got, Buffer.from(secret))) return res.status(404).send('Not found');
+  const { sub, id, ip, body } = req.body || {};
+  const site = await publishedSite(String(sub || ''));
+  if (!site || site.id !== id) return res.status(404).json({ status: 404, html: 'Site not found' });
+  res.json(await processForm(site, body && typeof body === 'object' ? body : {}, String(ip || '')));
+}));
 app.post('/s/:slug/_form', wrap(async (req, res) => handleForm(req.params.slug, req, res)));
 
 app.get('/messages', requireAuth, (req, res) => send(res, 'messages.html'));
@@ -965,4 +999,5 @@ app.use((err, req, res, next) => {
 });
 
 await store.init();
+startSync();
 app.listen(PORT, () => console.log(`ili studio running on http://localhost:${PORT} (data: ${store.DATA_DIR})`));

@@ -159,3 +159,31 @@ La page `thanks.html` est en `noindex` et ne compte pas dans la limite de pages.
 - Avant de publier, la fenêtre de publication montre le score SEO avec « Finalise my SEO first ».
 - Vitesse mobile via l'API PageSpeed de Google (gratuite) ; `PAGESPEED_API_KEY` optionnel pour un quota plus élevé.
 - Limites : 1 site externe en Free, 5 sur les offres payantes.
+
+## Deux serveurs : ili-studio et ili-sites
+
+Le même code tourne en deux apps séparées :
+
+| App | `MODE` | Rôle | Données |
+|---|---|---|---|
+| **ili-studio** | (vide) | éditeur, comptes, IA, SEO, messages | volume `ili-studio-data` → `/data` |
+| **ili-sites** | `sites` | sert uniquement les sites publiés (`*.yela.uk`) | volume `ili-sites-data` → `/data/live` |
+
+- À chaque publication, ili-studio envoie le site (ZIP) à ili-sites (`PUT /_internal/sites/<adresse>`, protégé par `SITES_SECRET`). Dépublier ou supprimer un site le retire d'ili-sites.
+- Les formulaires des sites arrivent sur ili-sites, qui les transmet à ili-studio (`POST /_internal/form`). ili-studio garde le message et l'envoie par e-mail au client.
+- Au démarrage puis toutes les 6 h, ili-studio remet ili-sites à jour : il envoie les sites manquants et retire ceux qui ne sont plus publiés. Une app ili-sites neuve ou vidée se remplit donc toute seule.
+- Comme tout passe par HTTP, ili-sites peut être déplacé sur un autre VPS : seul `SITES_URL` change dans ili-studio.
+- Si ili-studio n'a pas de `SITES_URL`, il sert lui-même les sites, comme avant.
+
+Variables :
+
+```
+# ili-studio
+SITES_URL=http://ili-sites:3000
+SITES_SECRET=<openssl rand -hex 32>   # la même valeur dans les deux apps
+
+# ili-sites
+MODE=sites
+SITES_SECRET=<la même valeur>
+STUDIO_URL=http://ili-studio:3000
+```
