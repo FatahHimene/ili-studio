@@ -8,16 +8,42 @@
   <link rel="icon" href="/_ili/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/_ili/app.css" />
   <link rel="stylesheet" href="/_ili/shell.css" />
+  <link rel="stylesheet" href="/_ili/offers.css" />
   <style>
-    .box { background: var(--white); border: 1px solid var(--ink); border-radius: var(--r2); padding: 22px 24px; max-width: 640px; margin-bottom: 20px; display: grid; gap: 12px; }
+    .cols { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 20px; align-items: start; max-width: 1100px; }
+    @media (max-width: 860px) { .cols { grid-template-columns: 1fr; } }
+    .stack { display: grid; gap: 20px; }
+    .box { background: var(--white); border: 1px solid var(--ink); border-radius: var(--r2); padding: 22px 24px; display: grid; gap: 14px; }
     .box h2 { font-size: 20px; margin: 0; }
     .box p { margin: 0; }
-    .facts2 { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; margin: 0; font-size: 15px; }
-    .facts2 dt { color: var(--slate); }
-    .facts2 dd { margin: 0; overflow-wrap: anywhere; }
-    .danger { border-color: #C0362C; }
-    .danger ul { margin: 0; padding-left: 20px; color: var(--slate); font-size: 14px; }
-    .danger form { display: grid; gap: 10px; max-width: 360px; }
+    .plan { box-shadow: 6px 6px 0 var(--signal); }
+    .ph { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+    .ph b { font: 700 30px var(--display); }
+    .ph .price { color: var(--slate); }
+    .ph .btn { margin-left: auto; }
+    .use { display: grid; gap: 12px; }
+    .u { display: grid; gap: 5px; }
+    .u .row { display: flex; justify-content: space-between; font-size: 14px; }
+    .u .row span:last-child { font-family: var(--mono); }
+    .meter { height: 8px; background: var(--paper); border-radius: 99px; overflow: hidden; border: 1px solid var(--grid); }
+    .meter i { display: block; height: 100%; background: var(--ink); border-radius: 99px; }
+    .meter i.full { background: #C0362C; }
+    .perks { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 14px; }
+    .perks li::before { content: '✓ '; font-weight: 700; }
+    .perks li.no { color: var(--slate); }
+    .perks li.no::before { content: '— '; }
+    .note { padding: 10px 12px; background: #F4FBDC; border-radius: var(--r); font-size: 14px; }
+    form.f { display: grid; gap: 10px; }
+    form.f .btn { justify-self: start; }
+    .ro { font-size: 15px; }
+    .ro small { display: block; color: var(--slate); font-size: 13px; margin-top: 2px; }
+    .links { display: grid; gap: 8px; font-size: 15px; }
+    .links a { color: var(--ink); }
+    details.danger { max-width: 1100px; margin-top: 28px; border-top: 1px solid var(--grid); padding-top: 16px; }
+    details.danger summary { cursor: pointer; color: var(--slate); font-size: 14px; width: max-content; }
+    details.danger[open] summary { margin-bottom: 14px; }
+    details.danger .box { border-color: #C0362C; max-width: 560px; }
+    details.danger ul { margin: 0; padding-left: 20px; color: var(--slate); font-size: 14px; }
   </style>
 </head>
 <body>
@@ -29,44 +55,116 @@
   <main>
     <div class="head"><div><span class="label">Settings</span><h1>Your account</h1></div></div>
 
-    <section class="box">
-      <h2>Details</h2>
-      <dl class="facts2" id="facts"></dl>
-    </section>
+    <div class="cols">
+      <div class="stack">
+        <section class="box plan" id="planBox"></section>
+        <section class="box">
+          <h2>Help</h2>
+          <div class="links">
+            <a href="mailto:hello@ilidweb.uk">Email us: hello@ilidweb.uk</a>
+            <a href="https://ilidweb.uk/help/" target="_blank" rel="noopener">Help centre ↗</a>
+            <a href="https://ilidweb.uk/pricing/" target="_blank" rel="noopener">Plans and prices ↗</a>
+            <a href="https://ilidweb.uk/legal/privacy/" target="_blank" rel="noopener">How we use your data ↗</a>
+          </div>
+        </section>
+      </div>
 
-    <section class="box danger" id="danger" hidden>
-      <h2>Delete my account</h2>
-      <p>This permanently deletes your account and everything in it:</p>
-      <ul>
-        <li>all your sites, drafts and their history</li>
-        <li>your published websites (they go offline straight away)</li>
-        <li>the messages received through your contact forms</li>
-        <li>your SEO checks</li>
-      </ul>
-      <p class="muted" style="font-size:14px">This cannot be undone. Our encrypted backups are kept for up to 6 months, then your data is gone from them too.</p>
-      <form id="delForm">
-        <label class="field"><span>Enter your password to confirm</span><input class="input" type="password" id="pw" autocomplete="current-password" required /></label>
-        <button class="btn btn-danger" type="submit" id="delBtn">Delete my account and all my sites</button>
-      </form>
-    </section>
+      <div class="stack">
+        <section class="box">
+          <h2>Your details</h2>
+          <div class="ro"><span id="email"></span><small>To change your email address, write to us.</small></div>
+          <form class="f" id="nameForm">
+            <label class="field"><span>Your name</span><input class="input" id="name" maxlength="80" autocomplete="name" /></label>
+            <button class="btn btn-sm" type="submit">Save</button>
+          </form>
+        </section>
+        <section class="box">
+          <h2>Password</h2>
+          <form class="f" id="pwForm">
+            <label class="field"><span>Current password</span><input class="input" type="password" id="pwOld" autocomplete="current-password" required /></label>
+            <label class="field"><span>New password (8 characters or more)</span><input class="input" type="password" id="pwNew" autocomplete="new-password" minlength="8" required /></label>
+            <button class="btn btn-sm" type="submit">Change password</button>
+          </form>
+        </section>
+      </div>
+    </div>
+
+    <details class="danger" id="danger" hidden>
+      <summary>Delete my account</summary>
+      <section class="box">
+        <p>This permanently deletes your account and everything in it:</p>
+        <ul>
+          <li>all your sites, drafts and their history</li>
+          <li>your published websites (they go offline straight away)</li>
+          <li>the messages received through your contact forms</li>
+          <li>your SEO checks</li>
+        </ul>
+        <p class="muted" style="font-size:14px">This cannot be undone. Our encrypted backups are kept for up to 6 months, then your data is gone from them too.</p>
+        <form class="f" id="delForm">
+          <label class="field"><span>Enter your password to confirm</span><input class="input" type="password" id="pw" autocomplete="current-password" required /></label>
+          <button class="btn btn-danger" type="submit" id="delBtn">Delete my account and all my sites</button>
+        </form>
+      </section>
+    </details>
   </main>
   <div class="toast" id="toast" role="status"></div>
   <script type="module">
     const $ = (s) => document.querySelector(s);
     const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    const toast = (m, err) => { const t = $('#toast'); t.textContent = m; t.classList.toggle('err', !!err); t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 5000); };
-    const u = await fetch('/api/me').then((r) => r.json());
-    $('#facts').innerHTML = `<dt>Email</dt><dd>${esc(u.email)}</dd>${u.name ? `<dt>Name</dt><dd>${esc(u.name)}</dd>` : ''}`
-      + (u.role === 'admin' ? '<dt>Role</dt><dd>Admin</dd>' : `<dt>Plan</dt><dd>${esc(u.planInfo.name)}</dd><dt>AI credits</dt><dd>${u.credits}</dd>`);
-    $('#danger').hidden = u.role === 'admin';
+    const toast = (m, err) => { const t = $('#toast'); t.textContent = m; t.classList.toggle('err', !!err); t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 5000); };
+    const send = async (url, method, body) => { const r = await fetch(url, { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); return { ok: r.ok, d: await r.json().catch(() => ({})) }; };
+
+    const [u, sites, plans] = await Promise.all([fetch('/api/me').then((r) => r.json()), fetch('/api/sites').then((r) => r.json()), fetch('/api/plans').then((r) => r.json())]);
+    const p = u.planInfo;
+    $('#email').textContent = u.email;
+    $('#name').value = u.name || '';
+
+    if (u.role === 'admin') {
+      $('#planBox').innerHTML = '<h2>Admin account</h2><p class="muted">Your plan and password are managed in Coolify. Clients are managed on the <a href="/clients">Clients</a> page.</p>';
+      $('#nameForm').hidden = true; $('#pwForm').closest('.box').hidden = true;
+    } else {
+      const live = sites.filter((s) => s.publishedAt).length;
+      const meter = (label, used, max) => {
+        const pct = max ? Math.min(100, Math.round((used / max) * 100)) : 0;
+        return `<div class="u"><div class="row"><span>${label}</span><span>${used} / ${max ?? '∞'}</span></div>${max ? `<div class="meter"><i style="width:${pct}%"${used >= max ? ' class="full"' : ''}></i></div>` : ''}</div>`;
+      };
+      const wants = u.wantsPlan && u.wantsPlan !== u.plan ? plans.plans.find((x) => x.id === u.wantsPlan) : null;
+      $('#planBox').innerHTML = `
+        <h2>Your plan</h2>
+        <div class="ph"><b>${esc(p.name)}</b><span class="price">${p.price ? `£${p.price.toFixed(2)} / month` : 'Free for good'}</span>
+          <button class="btn btn-sm ${u.plan === 'free' ? 'btn-primary' : ''}" id="plansBtn" type="button">${u.plan === 'free' ? 'See plans →' : 'Change plan'}</button></div>
+        ${wants ? `<p class="note">You chose the <b>${esc(wants.name)}</b> plan. We will be in touch to set up payment, then it switches on straight away.</p>` : ''}
+        <div class="use">
+          ${meter('Published sites', live, p.sites)}
+          ${meter('Sites in progress', sites.length, p.drafts)}
+          <div class="u"><div class="row"><span>AI credits left</span><span>✦ ${u.credits}</span></div><span class="muted" style="font-size:13px">${p.creditsOnce ? `${p.credits} credits at sign-up, one time. Paid plans get new credits every month.` : `${p.credits} new credits every month.`}</span></div>
+        </div>
+        <ul class="perks">
+          <li>${p.pages ? `Up to ${p.pages} page${p.pages > 1 ? 's' : ''} per site` : 'Unlimited pages'}</li>
+          <li class="${p.customDomain ? '' : 'no'}">${p.customDomain ? 'Your own domain' : `Free address on ${esc(plans.freeDomain)} (own domain on paid plans)`}</li>
+          <li class="${u.plan === 'free' ? 'no' : ''}">${u.plan === 'free' ? 'Small “Made with ili studio” link on your site' : 'No ili studio link on your site'}</li>
+        </ul>`;
+      $('#plansBtn').onclick = async () => { const { offersModal } = await import('/_ili/offers.js'); offersModal({ title: 'Choose a plan', intro: 'Your sites and everything you made are kept when you change plan.', current: u.plan }); };
+      $('#danger').hidden = false;
+    }
+
+    $('#nameForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const r = await send('/api/me', 'PATCH', { name: $('#name').value });
+      toast(r.ok ? 'Name saved' : r.d.error || 'Could not save', !r.ok);
+    };
+    $('#pwForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const r = await send('/api/me/password', 'POST', { current: $('#pwOld').value, next: $('#pwNew').value });
+      if (r.ok) { e.target.reset(); toast('Password changed'); } else toast(r.d.error || 'Could not change the password', true);
+    };
     $('#delForm').onsubmit = async (e) => {
       e.preventDefault();
       if (!confirm('Delete your account and all your sites for good?')) return;
       $('#delBtn').disabled = true;
-      const r = await fetch('/api/me', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: $('#pw').value }) });
-      const d = await r.json().catch(() => ({}));
+      const r = await send('/api/me', 'DELETE', { password: $('#pw').value });
       if (r.ok) { location.href = '/login?deleted=1'; return; }
-      $('#delBtn').disabled = false; toast(d.error || 'Something went wrong', true);
+      $('#delBtn').disabled = false; toast(r.d.error || 'Something went wrong', true);
     };
   </script>
 </body>

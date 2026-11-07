@@ -109,6 +109,21 @@ app.get('/api/plans', (req, res) => res.json({ plans: PLANS, freeDomain: FREE_DO
 app.get('/api/me', requireAuth, (req, res) => res.json({ ...users.publicUser(req.user), planInfo: planOf(req.user) }));
 // ---- the client's own account: see it, delete it -----------------------------------------
 app.get('/account', requireAuth, (req, res) => send(res, 'account.html'));
+app.patch('/api/me', requireAuth, wrap(async (req, res) => {
+  if (req.user.role === 'admin') return res.status(400).json({ error: 'Not for the admin account' });
+  const name = String(req.body.name ?? '').trim().slice(0, 80);
+  req.user.name = name; await users.save(req.user);
+  res.json({ ok: true, name });
+}));
+app.post('/api/me/password', requireAuth, wrap(async (req, res) => {
+  if (req.user.role === 'admin') return res.status(400).json({ error: 'The admin password is set in Coolify (ADMIN_PASSWORD).' });
+  const next = String(req.body.next || '');
+  if (!users.checkPassword(String(req.body.current || ''), req.user.password)) return res.status(403).json({ error: 'Your current password is wrong' });
+  if (next.length < 8) return res.status(400).json({ error: 'Choose a new password of at least 8 characters' });
+  if (next.length > 200) return res.status(400).json({ error: 'This password is too long' });
+  req.user.password = users.hashPassword(next); await users.save(req.user);
+  res.json({ ok: true });
+}));
 app.delete('/api/me', requireAuth, wrap(async (req, res) => {
   if (req.user.role === 'admin') return res.status(400).json({ error: 'The admin account cannot be deleted here.' });
   if (!users.checkPassword(String(req.body.password || ''), req.user.password)) return res.status(403).json({ error: 'Wrong password' });
