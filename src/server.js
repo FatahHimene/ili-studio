@@ -27,6 +27,7 @@ import { analyse, crawl, pagespeed } from './audit.js';
 import { PLANS, planOf, COSTS, FREE_DOMAIN, RESERVED } from './plans.js';
 import { remote, pushSite, removeSite, startSync, internalSecret } from './sitesync.js';
 import crypto from 'node:crypto';
+import * as versions from './versions.js';
 import { deleteSite, deleteAccount, diskUsage, startCleanup } from './cleanup.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -762,6 +763,7 @@ app.post('/api/sites/:id/publish', requireAuth, wrap(async (req, res) => {
   meta.subdomain = sub; meta.livePages = live;
   await store.writeMeta(meta.id, meta);
   invalidateSites();
+  await versions.create(meta, { kind: 'publish', label: '', keep: keepVersions(req.user) }).catch((e) => console.error(`[versions] ${meta.id}:`, e.message));
   res.json({ ok: true, url: freeUrl(sub), preview: `/s/${sub}/`, publishedAt: meta.publishedAt, live, locked });
 }));
 
@@ -776,6 +778,42 @@ app.post('/api/sites/:id/unpublish', requireAuth, wrap(async (req, res) => {
   await store.writeMeta(meta.id, meta);
   invalidateSites();
   res.json({ ok: true });
+}));
+
+// ---- versions: go back to an earlier state, download the site --------------------------------
+const keepVersions = (u) => (u.role === 'admin' ? 30 : planOf(u).versions || 1);
+const zipName = (meta, extra = '') => `${store.slugify(meta.name || meta.slug)}${extra}.zip`;
+app.get('/api/sites/:id/versions', requireAuth, wrap(async (req, res) => {
+  const meta = await siteFor(req);
+  res.json({ versions: await versions.list(meta.id), keep: keepVersions(req.user), plan: req.user.role === 'admin' ? null : planOf(req.user).name });
+}));
+app.post('/api/sites/:id/versions', requireAuth, wrap(async (req, res) => {
+  const meta = await siteFor(req);
+  res.json(await versions.create(meta, { kind: 'manual', label: req.body.label, keep: keepVersions(req.user) }));
+}));
+app.post('/api/sites/:id/versions/:vid/restore', requireAuth, wrap(async (req, res) => {
+  const meta = await siteFor(req);
+  const v = await versions.restore(meta, req.params.vid, keepVersions(req.user));
+  if (!v) return res.status(404).json({ error: 'This version no longer exists' });
+  const m = await store.readMeta(meta.id);
+  m.pages = v.pages; m.dirty = true; m.updatedAt = new Date().toISOString();
+  await store.writeMeta(meta.id, m);
+  res.json({ ok: true, pages: m.pages });
+}));
+app.delete('/api/sites/:id/versions/:vid', requireAuth, wrap(async (req, res) => {
+  const meta = await siteFor(req);
+  res.status((await versions.remove(meta.id, req.params.vid)) ? 200 : 404).json({ ok: true });
+}));
+app.get('/api/sites/:id/versions/:vid/download', requireAuth, wrap(async (req, res) => {
+  const meta = await siteFor(req);
+  const r = await versions.zipVersion(meta.id, req.params.vid);
+  if (!r) return res.status(404).json({ error: 'This version no longer exists' });
+  res.attachment(zipName(meta, '-' + r.v.at.slice(0, 10))).type('application/zip').send(r.zip);
+}));
+/** The client's site as it is now in the editor, as clean HTML files they can host anywhere (data portability). */
+app.get('/api/sites/:id/download', requireAuth, wrap(async (req, res) => {
+  const meta = await siteFor(req);
+  res.attachment(zipName(meta)).type('application/zip').send(await versions.zipFolder(store.draftDir(meta.id)));
 }));
 
 /** Free sites carry a small "Made with ili studio by Ilidweb" bar at the very bottom (removed on paid plans). */

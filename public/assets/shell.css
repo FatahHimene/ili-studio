@@ -45,3 +45,15 @@ main { max-width: 1200px; margin: 0 auto; padding: 48px 24px 96px; }
 .tabs a.seo-tab[aria-current='page'] .seo-ic { background: var(--signal); color: var(--ink); }
 
 .acct a.who:hover { text-decoration: underline; color: var(--ink); }
+/* phones: logo and account on the first row, the menu on its own scrolling row */
+@media (max-width: 720px) {
+  .top { flex-wrap: wrap; height: auto; padding: 10px 16px; gap: 8px 12px; }
+  .top .logo { white-space: nowrap; }
+  .top .logo small { display: none; }
+  .top > form { margin-left: auto; }
+  .acct ~ form { margin-left: 0; }
+  .tabs { order: 3; width: 100%; overflow-x: auto; scrollbar-width: none; margin: 0 -4px; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs a { white-space: nowrap; flex: none; }
+  main { padding-top: 28px; }
+}

@@ -18,6 +18,7 @@
     <label class="sr" for="page">Page</label>
     <select class="input page" id="page" aria-label="Page"></select>
     <button class="btn btn-sm" id="pagesBtn" type="button" aria-haspopup="dialog" title="Add, rename or delete pages">Pages</button>
+    <button class="btn btn-sm" id="verBtn" type="button" aria-haspopup="dialog" title="Save a version, go back to an earlier one, download your site">Versions</button>
     <div class="seg" role="group" aria-label="Device">
       <button data-dev="desktop" aria-pressed="true" title="Desktop">Desktop</button>
       <button data-dev="tablet" aria-pressed="false" title="Tablet">Tablet</button>
@@ -215,6 +216,20 @@
       <div class="phead"><h2 id="colTitle">Site colours</h2><button class="btn btn-sm" id="colClose" type="button" aria-label="Close">✕</button></div>
       <p class="muted" style="margin:0">Palettes chosen by the designer for this theme. The whole site changes at once.</p>
       <div class="palopts" id="colOpts"></div>
+    </div>
+  </div>
+
+  <div class="pmodal" id="verModal" hidden role="dialog" aria-modal="true" aria-labelledby="verTitle">
+    <div class="psheet pages vers">
+      <div class="phead"><h2 id="verTitle">Versions</h2><button class="btn btn-sm" id="verClose" type="button" aria-label="Close">✕</button></div>
+      <p class="muted small" style="margin:0">Your changes are saved automatically as you work. A version is a copy you can go back to: one is made every time you publish, and you can save one yourself before big changes.</p>
+      <form class="vsave" id="verForm">
+        <input class="input" id="verLabel" maxlength="80" placeholder="Name this version, e.g. Before new photos" aria-label="Version name" />
+        <button class="btn btn-sm btn-primary" type="submit">Save a version</button>
+      </form>
+      <ul class="plist vlist" id="verList"></ul>
+      <p class="muted small" id="verKeep" style="margin:0"></p>
+      <div class="vdl"><a class="btn btn-sm" id="dlNow" download>↓ Download my site (ZIP)</a><span class="muted small">Clean HTML files of your site as it is now, to keep or host anywhere.</span></div>
     </div>
   </div>
 

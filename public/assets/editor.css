@@ -125,3 +125,16 @@ body.fs .device { width: 100% !important; border: 0; border-radius: 0; box-shado
 .quick { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 0 14px; border-bottom: 1px solid var(--grid); margin-bottom: 14px; }
 .quick .btn-icon { width: 32px; height: 32px; }
 .quick #qDel { margin-left: auto; }
+
+/* versions dialog */
+.vsave { display: flex; gap: 8px; }
+.vsave .input { flex: 1; }
+.vlist li { align-items: center; }
+.vlist .pn span.kind { display: inline-block; font: 500 11px var(--mono); text-transform: uppercase; letter-spacing: .04em; padding: 1px 6px; border-radius: 99px; background: var(--paper); border: 1px solid var(--grid); margin-right: 6px; color: var(--ink); }
+.vlist .pn span.kind.publish { background: #F4FBDC; border-color: #9bbf1f; }
+.vlist .empty { color: var(--slate); font-size: 14px; padding: 14px 0; display: block; }
+.vdl { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; border-top: 1px solid var(--grid); padding-top: 12px; }
+.status.dirty, .status.ok { font-weight: 500; }
+#publish.changes::after { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #B7791F; margin-left: 6px; vertical-align: middle; box-shadow: 0 0 0 2px var(--white); }
+.bar > * { flex: none; }
+.bar .name { flex: 1 1 auto; width: auto; max-width: 240px; }

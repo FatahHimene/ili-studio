@@ -195,3 +195,14 @@ STUDIO_URL=http://ili-studio:3000
 - **Page admin Clients** (`/clients`) : tous les comptes avec offre, crédits IA, sites, espace disque et dernière connexion. L'admin peut changer l'offre (en attendant le paiement par carte), modifier les crédits ou supprimer un compte (confirmation en tapant l'e-mail du client).
 - **Nettoyage automatique** chaque nuit vers 04:00, après la sauvegarde de 03:30 : sites dont le compte n'existe plus, audits SEO orphelins, publications interrompues, fichiers envoyés de plus de 24 h.
 - Si un site ne peut pas être mis hors ligne (ili-sites ne répond pas), rien n'est supprimé et un message demande de réessayer : rien ne reste à moitié supprimé.
+
+## Versions des sites
+
+- Les modifications sont enregistrées automatiquement dans le brouillon. Le site en ligne ne change qu'au clic sur **Publier**. Dans l'éditeur, l'indicateur « Saved » le confirme, et le bouton devient **Publish changes ●** quand des modifications ne sont pas encore en ligne.
+- Le bouton **Versions** de l'éditeur sert à :
+  - enregistrer une version nommée ;
+  - revenir à une version : l'état actuel est d'abord gardé comme version « Auto », donc on peut annuler le retour. Rien n'est mis en ligne avant de publier ;
+  - télécharger une version, ou le site actuel, en ZIP de fichiers HTML propres.
+- Une version est créée automatiquement à chaque publication.
+- Nombre de versions gardées selon l'offre : Free 1, Essential 5, Plus 15, Pro 30 (`versions` dans `src/plans.js`). Les plus anciennes sont supprimées automatiquement.
+- Stockage : `sites/<id>/versions/`. Un fichier identique à celui de la version précédente est lié (hard link), pas recopié : les photos ne prennent pas de place en double.

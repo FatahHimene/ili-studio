@@ -15,11 +15,14 @@ function setStatus() {
   const s = $('#status');
   if (state.busy) { s.textContent = 'Saving…'; s.className = 'status'; return; }
   const m = state.meta;
-  if (!m.publishedAt) { s.textContent = 'Draft · not published yet'; s.className = 'status dirty'; }
-  else if (m.dirty) { s.textContent = 'Saved · unpublished changes'; s.className = 'status dirty'; }
-  else { s.textContent = 'Saved · live'; s.className = 'status ok'; }
+  if (!m.publishedAt) { s.textContent = 'Saved'; s.className = 'status dirty'; s.title = 'Your changes are saved. Publish to put the site online.'; }
+  else if (m.dirty) { s.textContent = 'Saved'; s.className = 'status dirty'; s.title = 'Your changes are saved but visitors still see the published version. Click Publish changes to put them online.'; }
+  else { s.textContent = 'Saved · live'; s.className = 'status ok'; s.title = 'Visitors see exactly what you see here.'; }
   const live = $('#live');
   live.hidden = !m.publishedAt; live.href = liveUrl(m.subdomain || m.slug);
+  const pub = $('#publish');
+  pub.textContent = m.publishedAt && m.dirty ? 'Publish changes' : 'Publish';
+  pub.classList.toggle('changes', !!(m.publishedAt && m.dirty));
 }
 
 async function api(path, opts = {}) {
@@ -739,3 +742,48 @@ $('#revBtn').onclick = async () => {
   };
 };
 loadReviewsBtn();
+
+// ---- versions ---------------------------------------------------------------------------------
+const KIND = { publish: 'Published', manual: 'Saved', auto: 'Auto' };
+const when = (iso) => new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+async function openVersions() {
+  $('#verModal').hidden = false;
+  $('#dlNow').href = `/api/sites/${id}/download`;
+  await renderVersions();
+}
+async function renderVersions() {
+  let d;
+  try { d = await api('/versions'); } catch (e) { return toast(esc(e.message), true); }
+  $('#verList').innerHTML = d.versions.length ? d.versions.map((v) => `
+    <li data-v="${v.id}"><span class="pn"><b>${esc(v.label || when(v.at))}</b><span><span class="kind ${v.kind}">${KIND[v.kind] || v.kind}</span>${v.label ? esc(when(v.at)) + ' · ' : ''}${v.pages.length} page${v.pages.length > 1 ? 's' : ''}</span></span>
+      <button class="btn btn-sm" data-act="restore" type="button">Go back to this</button>
+      <a class="btn btn-sm btn-icon" href="/api/sites/${id}/versions/${v.id}/download" download title="Download this version (ZIP)" aria-label="Download this version">↓</a>
+      <button class="btn btn-sm btn-icon btn-danger" data-act="del" type="button" title="Delete this version" aria-label="Delete this version">✕</button>
+    </li>`).join('') : '<li><span class="empty">No versions yet. One is made every time you publish, or save one now.</span></li>';
+  $('#verKeep').innerHTML = d.plan ? `Your ${esc(d.plan)} plan keeps your last ${d.keep} version${d.keep > 1 ? 's' : ''}.${d.keep < 15 ? ' <a href="#" id="verMore">Keep more</a>' : ''}` : `Keeps the last ${d.keep} versions.`;
+  const more = document.getElementById('verMore'); if (more) more.onclick = async (e) => { e.preventDefault(); const { offersModal } = await import('/_ili/offers.js'); offersModal({ title: 'Keep more versions', intro: 'Essential keeps 5 versions of your site, Plus 15 and Pro 30.', current: me.plan }); };
+}
+$('#verBtn').onclick = openVersions;
+$('#verClose').onclick = () => { $('#verModal').hidden = true; };
+$('#verModal').addEventListener('click', (e) => { if (e.target === $('#verModal')) $('#verModal').hidden = true; });
+$('#verForm').onsubmit = async (e) => {
+  e.preventDefault();
+  try { await api('/versions', { method: 'POST', body: JSON.stringify({ label: $('#verLabel').value }) }); $('#verLabel').value = ''; toast('Version saved'); renderVersions(); } catch (err) { toast(esc(err.message), true); }
+};
+$('#verList').onclick = async (e) => {
+  const b = e.target.closest('button[data-act]'); if (!b) return;
+  const vid = b.closest('li').dataset.v;
+  if (b.dataset.confirm !== '1') {
+    b.dataset.confirm = '1'; const was = b.textContent; b.textContent = b.dataset.act === 'restore' ? 'Click to confirm' : 'Confirm';
+    setTimeout(() => { b.dataset.confirm = ''; b.textContent = was; }, 3000); return;
+  }
+  try {
+    if (b.dataset.act === 'del') { await api(`/versions/${vid}`, { method: 'DELETE' }); toast('Version deleted'); return renderVersions(); }
+    const d = await api(`/versions/${vid}/restore`, { method: 'POST' });
+    state.meta.pages = d.pages; state.meta.dirty = true;
+    if (!d.pages.includes(state.page)) state.page = 'index.html';
+    $('#undo').disabled = true; show(null); refreshPageSelect(); setStatus(); loadFrame();
+    $('#verModal').hidden = true;
+    toast('Back to that version. Your previous state was saved as a version too. Publish to put it online.');
+  } catch (err) { toast(esc(err.message), true); }
+};
