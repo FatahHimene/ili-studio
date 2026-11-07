@@ -48,6 +48,12 @@ export async function save(u) {
   return u;
 }
 
+export async function remove(id) {
+  await load();
+  await fs.rm(path.join(DIR, `${id}.json`), { force: true });
+  cache.delete(id);
+}
+
 export async function create({ email, password, name = '', role = 'client', id }) {
   const now = new Date().toISOString();
   const free = PLANS[0];

@@ -23,8 +23,9 @@ async function loadMe() {
   const [u, p] = await Promise.all([fetch('/api/me').then((r) => r.json()), fetch('/api/plans').then((r) => r.json())]);
   Object.assign(me, u, { freeDomain: p.freeDomain });
   $('#themesTab').hidden = u.role !== 'admin';
+  $('#clientsTab').hidden = u.role !== 'admin';
   $('#acct').innerHTML = u.role === 'admin' ? '<span class="tag">Admin</span>'
-    : `<span class="who">${esc(u.email)}</span><span class="tag">${esc(u.planInfo.name)}</span><span class="credits" title="AI credits left">✦ ${u.credits} credits</span>${u.plan === 'free' ? '<button class="btn btn-sm btn-primary" id="upBtn" type="button">See plans</button>' : ''}`;
+    : `<a class="who" href="/account" title="Your account">${esc(u.email)}</a><span class="tag">${esc(u.planInfo.name)}</span><span class="credits" title="AI credits left">✦ ${u.credits} credits</span>${u.plan === 'free' ? '<button class="btn btn-sm btn-primary" id="upBtn" type="button">See plans</button>' : ''}`;
   const up = document.getElementById('upBtn');
   if (up) up.onclick = async () => { const { offersModal } = await import('/_ili/offers.js'); offersModal({ title: 'Choose a plan', intro: 'More pages, more AI credits and your own domain. Your site and everything you made are kept.', current: u.plan }); };
 }
@@ -62,7 +63,7 @@ grid.addEventListener('click', async (e) => {
   if (!b) return;
   if (b.dataset.confirm !== '1') { b.dataset.confirm = '1'; b.textContent = 'Click again to delete'; setTimeout(() => { b.dataset.confirm = ''; b.textContent = 'Delete'; }, 3000); return; }
   const r = await fetch(`/api/sites/${b.dataset.id}`, { method: 'DELETE' });
-  if (r.ok) { toast(`Deleted ${esc(b.dataset.name)}`); load(); } else toast('Could not delete this site', true);
+  if (r.ok) { toast(`Deleted ${esc(b.dataset.name)}`); load(); } else toast(esc((await r.json().catch(() => ({}))).error || 'Could not delete this site'), true);
 });
 
 // ---- import ---------------------------------------------------------------------------------

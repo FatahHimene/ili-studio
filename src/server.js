@@ -27,6 +27,7 @@ import { analyse, crawl, pagespeed } from './audit.js';
 import { PLANS, planOf, COSTS, FREE_DOMAIN, RESERVED } from './plans.js';
 import { remote, pushSite, removeSite, startSync, internalSecret } from './sitesync.js';
 import crypto from 'node:crypto';
+import { deleteSite, deleteAccount, diskUsage, startCleanup } from './cleanup.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(__dirname, '..', 'public');
@@ -106,6 +107,62 @@ app.post('/logout', (req, res) => { logout(res); res.redirect('/login'); });
 // ---- account, plans and credits --------------------------------------------------------
 app.get('/api/plans', (req, res) => res.json({ plans: PLANS, freeDomain: FREE_DOMAIN, costs: COSTS }));
 app.get('/api/me', requireAuth, (req, res) => res.json({ ...users.publicUser(req.user), planInfo: planOf(req.user) }));
+// ---- the client's own account: see it, delete it -----------------------------------------
+app.get('/account', requireAuth, (req, res) => send(res, 'account.html'));
+app.delete('/api/me', requireAuth, wrap(async (req, res) => {
+  if (req.user.role === 'admin') return res.status(400).json({ error: 'The admin account cannot be deleted here.' });
+  if (!users.checkPassword(String(req.body.password || ''), req.user.password)) return res.status(403).json({ error: 'Wrong password' });
+  try { await deleteAccount(req.user); }
+  catch (e) { console.error(`[account] ${req.user.id}:`, e.message); return res.status(502).json({ error: 'Your account could not be deleted right now. Please try again in a few minutes.' }); }
+  invalidateSites();
+  logout(res);
+  res.json({ ok: true });
+}));
+
+// ---- admin: clients ------------------------------------------------------------------------
+app.get('/clients', requireAdmin, (req, res) => send(res, 'clients.html'));
+app.get('/api/admin/clients', requireAdmin, wrap(async (req, res) => {
+  const all = await store.listSites();
+  const list = await Promise.all((await users.list()).filter((u) => u.role !== 'admin').map(async (u) => {
+    const mine = all.filter((s) => s.owner === u.id);
+    let bytes = 0;
+    for (const s of mine) bytes += await diskUsage(store.siteDir(s.id));
+    return {
+      id: u.id, email: u.email, name: u.name, plan: u.plan, wantsPlan: u.wantsPlan || null, credits: u.credits,
+      createdAt: u.createdAt, lastLoginAt: u.lastLoginAt || null, bytes,
+      sites: mine.map((s) => ({ id: s.id, name: s.name, live: !!s.publishedAt, address: s.publishedAt ? `${s.subdomain || s.slug}.${FREE_DOMAIN}` : null })),
+    };
+  }));
+  list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  res.json({ clients: list, plans: PLANS.map((p) => ({ id: p.id, name: p.name })), disk: await diskUsage(store.DATA_DIR) });
+}));
+app.patch('/api/admin/clients/:id', requireAdmin, wrap(async (req, res) => {
+  const u = await users.get(req.params.id);
+  if (!u || u.role === 'admin') return res.status(404).json({ error: 'Client not found' });
+  if (req.body.plan !== undefined) {
+    const plan = PLANS.find((p) => p.id === req.body.plan);
+    if (!plan) return res.status(400).json({ error: 'Unknown plan' });
+    u.plan = plan.id; u.planChosen = true; if (u.wantsPlan === plan.id) u.wantsPlan = null;
+  }
+  if (req.body.credits !== undefined) {
+    const n = Math.round(Number(req.body.credits));
+    if (!Number.isFinite(n) || n < 0 || n > 100000) return res.status(400).json({ error: 'Credits must be a number between 0 and 100000' });
+    u.credits = n;
+  }
+  await users.save(u);
+  res.json({ ok: true });
+}));
+app.delete('/api/admin/clients/:id', requireAdmin, wrap(async (req, res) => {
+  const u = await users.get(req.params.id);
+  if (!u || u.role === 'admin') return res.status(404).json({ error: 'Client not found' });
+  if (users.normEmail(req.body.confirm) !== u.email) return res.status(400).json({ error: 'Type the client\'s email address to confirm.' });
+  let n;
+  try { n = await deleteAccount(u); }
+  catch (e) { console.error(`[account] ${u.id}:`, e.message); return res.status(502).json({ error: 'Could not delete this account right now (a site could not be taken offline). Try again in a minute.' }); }
+  invalidateSites();
+  res.json({ ok: true, sites: n });
+}));
+
 /** The client's choice on the offers screen. Paid plans are recorded until card payment is switched on. */
 app.post('/api/me/choice', requireAuth, wrap(async (req, res) => {
   const plan = PLANS.find((p) => p.id === req.body.plan);
@@ -198,11 +255,8 @@ app.patch('/api/sites/:id', requireAuth, wrap(async (req, res) => {
 
 app.delete('/api/sites/:id', requireAuth, wrap(async (req, res) => {
   const meta = await siteFor(req);
-  if (meta.publishedAt) {
-    try { await removeSite(meta.subdomain || meta.slug, meta.id); }
-    catch (e) { console.error(`[delete] ${meta.id}:`, e.message); return res.status(502).json({ error: 'Could not take the site offline right now. Please try again in a minute.' }); }
-  }
-  await fs.rm(store.siteDir(req.params.id), { recursive: true, force: true });
+  try { await deleteSite(meta); }
+  catch (e) { console.error(`[delete] ${meta.id}:`, e.message); return res.status(502).json({ error: 'Could not take the site offline right now. Please try again in a minute.' }); }
   invalidateSites();
   res.json({ ok: true });
 }));
@@ -1000,4 +1054,5 @@ app.use((err, req, res, next) => {
 
 await store.init();
 startSync();
+startCleanup();
 app.listen(PORT, () => console.log(`ili studio running on http://localhost:${PORT} (data: ${store.DATA_DIR})`));

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Clients · ili studio admin</title>
+  <link rel="icon" href="/_ili/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/_ili/app.css" />
+  <link rel="stylesheet" href="/_ili/shell.css" />
+  <style>
+    .stats { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+    .stat { background: var(--white); border: 1px solid var(--ink); border-radius: var(--r2); padding: 12px 16px; min-width: 140px; }
+    .stat b { display: block; font: 700 26px var(--display); }
+    .stat span { font-size: 13px; color: var(--slate); }
+    .bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; align-items: center; }
+    .bar .input { max-width: 320px; }
+    .tw { overflow-x: auto; background: var(--white); border: 1px solid var(--ink); border-radius: var(--r2); }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+    th { font: 500 12px var(--mono); color: var(--slate); text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+    tr:last-child td { border-bottom: 0; }
+    td .em { font-weight: 600; overflow-wrap: anywhere; }
+    td .sm { font-size: 12px; color: var(--slate); }
+    td select, td input { font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--grid); border-radius: 6px; background: var(--white); }
+    td input { width: 80px; }
+    .sites { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+    .sites a { color: inherit; }
+    .num { font-family: var(--mono); white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <a class="logo" href="/"><span class="i"><span class="cur"></span>ı</span>li studio<small>Admin</small></a>
+    <nav class="tabs"><a href="/">Sites</a><a href="/messages">Messages</a><a href="/seo" class="seo-tab"><span class="seo-ic" aria-hidden="true">↗</span>SEO</a><a href="/themes">Themes</a><a href="/clients" aria-current="page">Clients</a></nav>
+    <form method="post" action="/logout" style="margin-left:auto"><button class="btn btn-sm" type="submit">Sign out</button></form>
+  </header>
+  <main>
+    <div class="head">
+      <div><span class="label">Admin · clients</span><h1>Clients</h1></div>
+      <p class="muted" style="max-width:48ch;margin:0">Every account, its plan, credits, sites and the space it uses. Until card payment is on, change a client's plan here after they pay.</p>
+    </div>
+    <div class="stats" id="stats"></div>
+    <div class="bar"><input class="input" type="search" id="q" placeholder="Search by email, name or site…" aria-label="Search clients" /><span class="muted" id="count"></span></div>
+    <div class="tw"><table>
+      <thead><tr><th>Client</th><th>Plan</th><th>Credits</th><th>Sites</th><th>Space</th><th>Joined · last sign-in</th><th></th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table></div>
+  </main>
+  <div class="toast" id="toast" role="status"></div>
+  <script type="module" src="/_ili/clients.js"></script>
+</body>
+</html>

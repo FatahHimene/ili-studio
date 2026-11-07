@@ -23,6 +23,7 @@
   <script>
     const q = new URLSearchParams(location.search);
     if (q.get('error')) { const el = document.getElementById('err'); el.textContent = q.get('error'); el.hidden = false; }
+    if (q.get('deleted')) { const el = document.getElementById('err'); el.textContent = 'Your account and all your sites have been deleted. Thank you for trying ili studio.'; el.style.cssText = 'background:#F4FBDC;color:#16181d;border-color:#9bbf1f'; el.hidden = false; }
     if (q.get('email')) document.getElementById('email').value = q.get('email');
     if (q.get('next') === 'seo') { document.getElementById('next').value = 'seo'; document.querySelector('.alt a').href = '/signup?next=seo'; }
   </script>

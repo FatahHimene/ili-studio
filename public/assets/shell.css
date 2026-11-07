@@ -2,7 +2,7 @@
 .top { display: flex; align-items: center; gap: 24px; height: 64px; padding: 0 24px; background: rgba(246,247,249,.92); border-bottom: 1px solid var(--grid); position: sticky; top: 0; z-index: 5; backdrop-filter: blur(10px); }
 .top form { margin-left: 0; }
 .acct { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: 13px; }
-.acct .who { color: var(--slate); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct .who { color: var(--slate); text-decoration: none; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .acct .credits { font: 500 12px var(--mono); }
 @media (max-width: 720px) { .acct .who { display: none; } }
 .tabs { display: flex; gap: 4px; }
@@ -44,3 +44,4 @@ main { max-width: 1200px; margin: 0 auto; padding: 48px 24px 96px; }
 .seo-ic { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 4px; background: var(--ink); color: var(--signal); font-size: 12px; font-weight: 700; }
 .tabs a.seo-tab[aria-current='page'] .seo-ic { background: var(--signal); color: var(--ink); }
 
+.acct a.who:hover { text-decoration: underline; color: var(--ink); }

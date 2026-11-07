@@ -187,3 +187,11 @@ MODE=sites
 SITES_SECRET=<la même valeur>
 STUDIO_URL=http://ili-studio:3000
 ```
+
+## Suppression et nettoyage
+
+- **Supprimer un site** : retire aussi sa copie en ligne sur ili-sites, son historique, ses messages et son audit SEO (`src/cleanup.js`).
+- **Le client supprime son compte** : page **Mon compte** (`/account`, lien sur son e-mail en haut du tableau de bord), confirmation par mot de passe. Tous ses sites, messages et contrôles SEO sont supprimés (UK GDPR, droit à l'effacement). Les sauvegardes chiffrées disparaissent au bout de 6 mois.
+- **Page admin Clients** (`/clients`) : tous les comptes avec offre, crédits IA, sites, espace disque et dernière connexion. L'admin peut changer l'offre (en attendant le paiement par carte), modifier les crédits ou supprimer un compte (confirmation en tapant l'e-mail du client).
+- **Nettoyage automatique** chaque nuit vers 04:00, après la sauvegarde de 03:30 : sites dont le compte n'existe plus, audits SEO orphelins, publications interrompues, fichiers envoyés de plus de 24 h.
+- Si un site ne peut pas être mis hors ligne (ili-sites ne répond pas), rien n'est supprimé et un message demande de réessayer : rien ne reste à moitié supprimé.

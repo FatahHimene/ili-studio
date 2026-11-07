@@ -74,6 +74,7 @@ export async function login(req, res, email, password) {
   }
   const u = await users.byEmail(e);
   if (!u || u.role === 'admin' || !users.checkPassword(password, u.password)) return { ok: false, error: 'Wrong email or password' };
+  u.lastLoginAt = new Date().toISOString(); await users.save(u);
   startSession(req, res, u.id);
   return { ok: true, user: u };
 }

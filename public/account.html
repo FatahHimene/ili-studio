@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Your account · ili studio</title>
+  <link rel="icon" href="/_ili/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/_ili/app.css" />
+  <link rel="stylesheet" href="/_ili/shell.css" />
+  <style>
+    .box { background: var(--white); border: 1px solid var(--ink); border-radius: var(--r2); padding: 22px 24px; max-width: 640px; margin-bottom: 20px; display: grid; gap: 12px; }
+    .box h2 { font-size: 20px; margin: 0; }
+    .box p { margin: 0; }
+    .facts2 { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; margin: 0; font-size: 15px; }
+    .facts2 dt { color: var(--slate); }
+    .facts2 dd { margin: 0; overflow-wrap: anywhere; }
+    .danger { border-color: #C0362C; }
+    .danger ul { margin: 0; padding-left: 20px; color: var(--slate); font-size: 14px; }
+    .danger form { display: grid; gap: 10px; max-width: 360px; }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <a class="logo" href="/"><span class="i"><span class="cur"></span>ı</span>li studio</a>
+    <nav class="tabs"><a href="/">Sites</a><a href="/messages">Messages</a><a href="/seo" class="seo-tab"><span class="seo-ic" aria-hidden="true">↗</span>SEO</a></nav>
+    <form method="post" action="/logout" style="margin-left:auto"><button class="btn btn-sm" type="submit">Sign out</button></form>
+  </header>
+  <main>
+    <div class="head"><div><span class="label">Settings</span><h1>Your account</h1></div></div>
+
+    <section class="box">
+      <h2>Details</h2>
+      <dl class="facts2" id="facts"></dl>
+    </section>
+
+    <section class="box danger" id="danger" hidden>
+      <h2>Delete my account</h2>
+      <p>This permanently deletes your account and everything in it:</p>
+      <ul>
+        <li>all your sites, drafts and their history</li>
+        <li>your published websites (they go offline straight away)</li>
+        <li>the messages received through your contact forms</li>
+        <li>your SEO checks</li>
+      </ul>
+      <p class="muted" style="font-size:14px">This cannot be undone. Our encrypted backups are kept for up to 6 months, then your data is gone from them too.</p>
+      <form id="delForm">
+        <label class="field"><span>Enter your password to confirm</span><input class="input" type="password" id="pw" autocomplete="current-password" required /></label>
+        <button class="btn btn-danger" type="submit" id="delBtn">Delete my account and all my sites</button>
+      </form>
+    </section>
+  </main>
+  <div class="toast" id="toast" role="status"></div>
+  <script type="module">
+    const $ = (s) => document.querySelector(s);
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const toast = (m, err) => { const t = $('#toast'); t.textContent = m; t.classList.toggle('err', !!err); t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 5000); };
+    const u = await fetch('/api/me').then((r) => r.json());
+    $('#facts').innerHTML = `<dt>Email</dt><dd>${esc(u.email)}</dd>${u.name ? `<dt>Name</dt><dd>${esc(u.name)}</dd>` : ''}`
+      + (u.role === 'admin' ? '<dt>Role</dt><dd>Admin</dd>' : `<dt>Plan</dt><dd>${esc(u.planInfo.name)}</dd><dt>AI credits</dt><dd>${u.credits}</dd>`);
+    $('#danger').hidden = u.role === 'admin';
+    $('#delForm').onsubmit = async (e) => {
+      e.preventDefault();
+      if (!confirm('Delete your account and all your sites for good?')) return;
+      $('#delBtn').disabled = true;
+      const r = await fetch('/api/me', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: $('#pw').value }) });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) { location.href = '/login?deleted=1'; return; }
+      $('#delBtn').disabled = false; toast(d.error || 'Something went wrong', true);
+    };
+  </script>
+</body>
+</html>
