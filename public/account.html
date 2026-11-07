@@ -120,7 +120,7 @@
     $('#name').value = u.name || '';
 
     if (u.role === 'admin') {
-      $('#planBox').innerHTML = '<h2>Admin account</h2><p class="muted">Your plan and password are managed in Coolify. Clients are managed on the <a href="/clients">Clients</a> page.</p>';
+      $('#planBox').innerHTML = '<h2>Admin account</h2><p class="muted">Your password is set on the server. Clients are managed on the <a href="/clients">Clients</a> page.</p>';
       $('#nameForm').hidden = true; $('#pwForm').closest('.box').hidden = true;
     } else {
       const live = sites.filter((s) => s.publishedAt).length;

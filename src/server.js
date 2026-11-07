@@ -296,7 +296,17 @@ app.post('/api/sites/:id/ops', requireAuth, wrap(async (req, res) => {
 }));
 
 // ---- Wren (AI) ------------------------------------------------------------------------
-app.get('/api/ai', requireAuth, (req, res) => res.json(aiStatus()));
+// Clients only learn whether Wren is on: which AI company runs it and how it is set up stays private.
+app.get('/api/ai', requireAuth, (req, res) => { const st = aiStatus(); res.json(req.user.role === 'admin' ? st : { enabled: st.enabled }); });
+const TECH_WORDS = /azure|free ai|gemini|anthropic|claude|openai|deployment|endpoint|api.?key|ai key|\bmodel\b|ai error|\(\d{3}\)|internet|caprover|coolify|app settings|server/i;
+const ENV_NAME = /\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b/;
+/** What a client may read about an AI failure. The admin sees the real reason; clients never see providers, settings or keys. */
+function aiMsg(e, user, fallback) {
+  const m = e instanceof AiError ? e.message : fallback;
+  if (user?.role === 'admin' || !(TECH_WORDS.test(m) || ENV_NAME.test(m))) return m;
+  console.error('[wren] error hidden from client:', m);
+  return 'Wren is not available right now. Please try again in a few minutes.';
+}
 app.get('/api/ai/ping', requireAdmin, wrap(async (req, res) => res.json(await ping())));
 
 const aiCalls = []; // simple guard: max 20 AI calls per minute for the whole app
@@ -376,7 +386,7 @@ app.post('/api/sites/:id/wren', requireAuth, wrap(async (req, res) => {
       Object.assign(job, { status: 'done', note: out.note, undo: await store.historyCount(meta.id, page), credits: payer?.role === 'admin' ? null : payer?.credits });
     } catch (e) {
       if (!(e instanceof AiError)) console.error('[wren] job failed:', e);
-      Object.assign(job, { status: 'error', error: e instanceof AiError ? e.message : 'Wren hit a problem. Try again.' });
+      Object.assign(job, { status: 'error', error: aiMsg(e, req.user, 'Wren hit a problem. Try again.') });
     }
   })();
 }));
@@ -611,7 +621,7 @@ app.post('/api/sites/:id/images/suggest', requireAuth, wrap(async (req, res) => 
     });
     const queries = (Array.isArray(data.queries) ? data.queries : []).map((q) => String(q).slice(0, 60)).filter(Boolean).slice(0, 3);
     res.json({ queries });
-  } catch (e) { if (e instanceof AiError) return res.status(502).json({ error: e.message }); throw e; }
+  } catch (e) { if (e instanceof AiError) return res.status(502).json({ error: aiMsg(e, req.user) }); throw e; }
 }));
 
 // ---- themes ------------------------------------------------------------------------------------
@@ -681,7 +691,7 @@ app.post('/api/sites/from-theme', requireAuth, wrap(async (req, res) => {
       const m = await store.readMeta(id); m.personalising = false;
       for (const p of m.pages) { const f = store.safeJoin(store.draftDir(id), p); await fs.writeFile(f, tag(await fs.readFile(f, 'utf8'))); }
       await store.writeMeta(id, m);
-      Object.assign(job, { status: 'error', error: e instanceof AiError ? e.message : 'Personalisation failed, the theme is ready to edit by hand.' });
+      Object.assign(job, { status: 'error', error: aiMsg(e, req.user, 'Personalisation failed, the theme is ready to edit by hand.') });
     }
   })();
 }));
@@ -1011,7 +1021,7 @@ app.post('/api/sites/:id/seo-write', requireAuth, wrap(async (req, res) => {
     });
     const payer = await users.spend(req.user.id, 1);
     res.json({ title: String(data.title || '').slice(0, 90), description: String(data.description || '').slice(0, 200), credits: payer?.role === 'admin' ? null : payer?.credits });
-  } catch (e) { res.status(400).json({ error: e instanceof AiError ? e.message : 'Wren could not write this. Try again.' }); }
+  } catch (e) { res.status(400).json({ error: aiMsg(e, req.user, 'Wren could not write this. Try again.') }); }
 }));
 
 // ---- reviews -----------------------------------------------------------------------------------

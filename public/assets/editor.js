@@ -505,8 +505,9 @@ function wrenUi(info) {
   const g = $('#gWren');
   g.classList.toggle('off', !ai.enabled);
   $('#wrenInput').disabled = !ai.enabled; $('#wrenGo').disabled = !ai.enabled;
-  $('#wrenTag').textContent = ai.enabled ? ({ gemini: 'Gemini', anthropic: 'Claude', azure: 'Azure' }[ai.provider] || 'Test') : 'Not set up';
-  $('#wrenNote').textContent = ai.enabled ? 'Wren edits only the selected element. You can undo any change.' : 'Add an AI key (Azure, Gemini or Claude) in CapRover to switch Wren on.';
+  $('#wrenTag').textContent = ai.enabled ? 'AI' : 'Off';
+  $('#wrenNote').textContent = ai.enabled ? 'Wren edits only the selected element. You can undo any change.'
+    : ai.provider !== undefined ? 'Wren is off: no AI key is set in the app settings (admin only sees this).' : 'Wren is not available right now. You can keep editing by hand.';
   const chips = info?.canText ? CHIPS_TEXT : CHIPS_BLOCK;
   $('#wrenChips').innerHTML = ai.enabled ? chips.map((c) => `<button type="button">${esc(c)}</button>`).join('') : '';
 }
