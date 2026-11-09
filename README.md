@@ -253,3 +253,11 @@ STUDIO_URL=http://ili-studio:3000
   - le module est activé avec les champs, le bouton et la mention du formulaire du thème, ainsi qu'avec le téléphone et l'e-mail du brief ;
   - c'est la même chose pour les pages modèles du thème ajoutées plus tard ;
   - pour les sites déjà créés, la fenêtre Modules propose « Switch to the Contact module » (`POST /api/sites/:id/modules/adopt`, qu'on peut annuler avec Undo).
+- **Style des boutons Contact** (`look` dans `meta.contact`) :
+  - `theme` (par défaut) : le thème décide, avec `"contactLook"` dans le `ui` de `theme.json` : `buttons`, `brand`, `links` ou `text` ;
+  - `buttons` : boutons du thème ;
+  - `brand` : comme `buttons`, mais WhatsApp en vert ;
+  - `links` : icône et texte ;
+  - `text` : texte seul.
+
+  Chaque action (WhatsApp, Appeler, E-mail) peut aussi recevoir sa propre couleur. Le texte passe alors automatiquement en noir ou en blanc selon le fond.

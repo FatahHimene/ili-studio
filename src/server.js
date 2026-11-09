@@ -1128,7 +1128,7 @@ app.get('/api/sites/:id/modules', requireAuth, wrap(async (req, res) => {
   }
   res.json({
     modules: MODULES.map((m) => ({ ...m, allowed: planRank[plan] >= planRank[m.plan], pages: on[m.id] || [] })),
-    contact: contactOf(meta), ownerEmail: req.user.email,
+    contact: contactOf(meta), ownerEmail: req.user.email, themeLook: (await uiOf(meta)).contactLook || 'buttons',
     legacyForm: on.contact.length > 0 && !(await Promise.all(on.contact.map(async (p) => /data-ili-module="contact"/.test(await fs.readFile(store.safeJoin(store.draftDir(meta.id), p), 'utf8'))))).some(Boolean),
   });
 }));

@@ -175,3 +175,11 @@ body.fs .device { width: 100% !important; border: 0; border-radius: 0; box-shado
 .rlist2 li span:first-child { flex: 1; overflow-wrap: anywhere; }
 #cFormBox { display: grid; gap: 10px; }
 #cFormBox[hidden] { display: none; }
+.cstyle { max-width: 360px; }
+.crow { grid-template-columns: 120px minmax(0, 1fr) minmax(0, 1.4fr) auto; }
+.crow:has(> :nth-child(3):last-child) { grid-template-columns: 120px minmax(0, 1fr) auto; }
+.ccol { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--slate); white-space: nowrap; }
+.ccol input[type=color] { width: 34px; height: 34px; padding: 2px; border: 1px solid var(--grid); border-radius: 8px; background: var(--white); cursor: pointer; }
+.ccol:not(.set) input[type=color] { opacity: .35; }
+.ccol.set .cdef, .ccol:not(.set) button { display: none; }
+@media (max-width: 620px) { .crow, .crow:has(> :nth-child(3):last-child) { grid-template-columns: 1fr; } }

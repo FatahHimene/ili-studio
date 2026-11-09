@@ -791,7 +791,7 @@ $('#verList').onclick = async (e) => {
 // ---- modules ----------------------------------------------------------------------------------
 function modInfo(k) {
   return {
-    contact: { title: 'Contact module', text: 'WhatsApp, call and email buttons and the contact form come from your contact settings.', btn: 'Contact settings', open: openContact },
+    contact: { title: 'Contact module', text: 'The buttons and the form are set in the contact settings: style, colour of each button, fields of the form.', btn: 'Contact settings', open: openContact },
     form: { title: 'Contact form', text: 'This is the theme’s fixed form. Switch to the Contact module to change its fields and add WhatsApp and call buttons.', btn: 'Switch to the Contact module', open: openModules },
     reviews: { title: 'Customer reviews', text: 'Reviews shown here come from your reviews settings.', btn: 'Edit reviews', open: openReviews },
   }[k] || null;
@@ -846,6 +846,8 @@ async function openModules() {
 }
 $('#modBtn').onclick = openModules;
 
+/** A colour choice that can be left on "theme colour". */
+const colourPick = (idv) => `<span class="ccol" title="Colour of this button"><input type="color" id="${idv}" aria-label="Colour"><span class="cdef">Theme colour</span><button type="button" class="btn btn-sm btn-icon" aria-label="Back to the theme colour" title="Back to the theme colour">✕</button></span>`;
 const FTYPES = { text: 'Short text', email: 'Email', tel: 'Phone', textarea: 'Long text', select: 'List of choices', date: 'Date' };
 async function openContact() {
   let d;
@@ -856,9 +858,15 @@ async function openContact() {
     <div class="ohead"><h2>Contact</h2><button class="btn btn-sm" type="button" data-close aria-label="Close">✕</button></div>
     <p class="ointro">Choose how visitors can reach you. It is the same on every page where the Contact module is.</p>
     <section class="cs"><h3>Buttons</h3>
-      <div class="crow"><label class="check"><input type="checkbox" id="cWa"> WhatsApp</label><input class="input" id="cWaNum" placeholder="07700 900123" inputmode="tel"><input class="input" id="cWaMsg" placeholder="First message, e.g. Hello, I found you on your website."></div>
-      <div class="crow"><label class="check"><input type="checkbox" id="cTel"> Call</label><input class="input" id="cTelNum" placeholder="01273 123456" inputmode="tel"></div>
-      <div class="crow"><label class="check"><input type="checkbox" id="cMail"> Email</label><input class="input" id="cMailAd" placeholder="hello@yourbusiness.co.uk" inputmode="email"></div>
+      <label class="field cstyle"><span>Style</span><select class="input" id="cLook">
+        <option value="theme">Like the theme (${{ buttons: 'buttons', brand: 'buttons', links: 'icon and text', text: 'text only' }[d.themeLook] || 'buttons'})</option>
+        <option value="buttons">Buttons</option>
+        <option value="brand">Buttons, WhatsApp in green</option>
+        <option value="links">Icon and text</option>
+        <option value="text">Text only</option></select></label>
+      <div class="crow"><label class="check"><input type="checkbox" id="cWa"> WhatsApp</label><input class="input" id="cWaNum" placeholder="07700 900123" inputmode="tel"><input class="input" id="cWaMsg" placeholder="First message, e.g. Hello, I found you on your website.">${colourPick('cWaCol')}</div>
+      <div class="crow"><label class="check"><input type="checkbox" id="cTel"> Call</label><input class="input" id="cTelNum" placeholder="01273 123456" inputmode="tel">${colourPick('cTelCol')}</div>
+      <div class="crow"><label class="check"><input type="checkbox" id="cMail"> Email</label><input class="input" id="cMailAd" placeholder="hello@yourbusiness.co.uk" inputmode="email">${colourPick('cMailCol')}</div>
       <label class="check"><input type="checkbox" id="cFloat"> Also show a round WhatsApp button in the corner of every page</label>
     </section>
     <section class="cs"><h3><label class="check"><input type="checkbox" id="cForm"> Contact form</label></h3>
@@ -885,6 +893,12 @@ async function openContact() {
   q('#cTel').checked = c.phone.on; q('#cTelNum').value = c.phone.number;
   q('#cMail').checked = c.email.on; q('#cMailAd').value = c.email.address;
   q('#cFloat').checked = c.float.on;
+  q('#cLook').value = c.look || 'theme';
+  const setCol = (idv, v) => { const i = q('#' + idv); i.value = v || '#888888'; i.closest('.ccol').classList.toggle('set', !!v); };
+  setCol('cWaCol', c.whatsapp.color); setCol('cTelCol', c.phone.color); setCol('cMailCol', c.email.color);
+  wrap.querySelectorAll('.ccol input').forEach((i) => i.addEventListener('input', () => i.closest('.ccol').classList.add('set')));
+  wrap.querySelectorAll('.ccol button').forEach((b) => b.onclick = () => b.closest('.ccol').classList.remove('set'));
+  const colOf = (idv) => (q('#' + idv).closest('.ccol').classList.contains('set') ? q('#' + idv).value : '');
   q('#cForm').checked = c.form.on; q('#cSubmit').value = c.form.submit; q('#cNote').value = c.form.note;
   const sync = () => {
     for (const [box, ...inputs] of [['#cWa', '#cWaNum', '#cWaMsg'], ['#cTel', '#cTelNum'], ['#cMail', '#cMailAd']]) inputs.forEach((i) => { q(i).disabled = !q(box).checked; });
@@ -927,9 +941,10 @@ async function openContact() {
     const btn = q('#cSave'); btn.disabled = true; q('#cMsg').textContent = 'Saving…';
     const body = {
       title: c.title, intro: c.intro,
-      whatsapp: { on: q('#cWa').checked, number: q('#cWaNum').value, message: q('#cWaMsg').value },
-      phone: { on: q('#cTel').checked, number: q('#cTelNum').value },
-      email: { on: q('#cMail').checked, address: q('#cMailAd').value },
+      look: q('#cLook').value,
+      whatsapp: { on: q('#cWa').checked, number: q('#cWaNum').value, message: q('#cWaMsg').value, color: colOf('cWaCol') },
+      phone: { on: q('#cTel').checked, number: q('#cTelNum').value, color: colOf('cTelCol') },
+      email: { on: q('#cMail').checked, address: q('#cMailAd').value, color: colOf('cMailCol') },
       float: { on: q('#cFloat').checked },
       form: { on: q('#cForm').checked, fields: c.form.fields, submit: q('#cSubmit').value, note: q('#cNote').value },
       recipients: c.recipients,

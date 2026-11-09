@@ -52,7 +52,7 @@ async function readTheme(dir, source) {
       description: String(t.description || ''),
       version: String(t.version || '1.0.0'), preview, pages, templates, palettes, source, dir,
       // class names the modules (contact, reviews…) use so they look like the theme
-      ui: Object.fromEntries(['button', 'buttonAlt', 'form', 'section', 'container'].filter((k) => typeof t.ui?.[k] === 'string').map((k) => [k, t.ui[k].replace(/[^\w\s-]/g, '').trim().slice(0, 80)])),
+      ui: Object.fromEntries(['button', 'buttonAlt', 'form', 'section', 'container', 'contactLook'].filter((k) => typeof t.ui?.[k] === 'string').map((k) => [k, t.ui[k].replace(/[^\w\s-]/g, '').trim().slice(0, 80)])),
     };
   } catch { return null; }
 }

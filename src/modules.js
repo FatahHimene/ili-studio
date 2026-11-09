@@ -47,8 +47,11 @@ export function contactDefaults(brief = {}) {
     },
     recipients: [],
     float: { on: false },
+    look: 'theme', // theme | buttons | brand | links | text
   };
 }
+export const LOOKS = ['theme', 'buttons', 'brand', 'links', 'text'];
+const HEX = /^#[0-9a-f]{6}$/i;
 export const contactOf = (meta) => meta.contact || contactDefaults(meta.brief);
 
 const str = (v, n) => String(v ?? '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n);
@@ -58,9 +61,11 @@ const phoneOk = (p) => /^[+\d][\d\s().-]{5,24}$/.test(p);
 export function cleanContact(b, ownerEmail) {
   const c = contactDefaults();
   c.title = str(b.title, 120); c.intro = str(b.intro, 400);
-  c.whatsapp = { on: !!b.whatsapp?.on, number: str(b.whatsapp?.number, 30), message: str(b.whatsapp?.message, 200) };
-  c.phone = { on: !!b.phone?.on, number: str(b.phone?.number, 30) };
-  c.email = { on: !!b.email?.on, address: str(b.email?.address, 200) };
+  const col = (v) => (HEX.test(String(v || '')) ? String(v).toLowerCase() : '');
+  c.whatsapp = { on: !!b.whatsapp?.on, number: str(b.whatsapp?.number, 30), message: str(b.whatsapp?.message, 200), color: col(b.whatsapp?.color) };
+  c.phone = { on: !!b.phone?.on, number: str(b.phone?.number, 30), color: col(b.phone?.color) };
+  c.email = { on: !!b.email?.on, address: str(b.email?.address, 200), color: col(b.email?.color) };
+  c.look = LOOKS.includes(b.look) ? b.look : 'theme';
   if (c.whatsapp.on && !phoneOk(c.whatsapp.number)) throw new Error('Enter the WhatsApp number, e.g. 07700 900123.');
   if (c.phone.on && !phoneOk(c.phone.number)) throw new Error('Enter the phone number, e.g. 01273 123456.');
   if (c.email.on && !EMAIL_RE.test(c.email.address)) throw new Error('Enter a valid email address for the Email button.');
@@ -119,12 +124,28 @@ const ICON = {
 };
 
 /** The inside of a contact slot. `ui` holds the theme's class names. */
+/** Black or white text, whichever reads better on this background. */
+function onColor(hex) {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.4 ? '#111111' : '#ffffff';
+}
+const BRAND = { whatsapp: '#25d366' };
+
 export function contactHtml(c, ui = {}) {
   const btn = cls(ui.button), alt = cls(ui.buttonAlt || ui.button);
+  // how the WhatsApp / call / email links look: the theme decides by default (theme.json ui.contactLook), the owner can change it
+  const look = c.look && c.look !== 'theme' ? c.look : (LOOKS.includes(ui.contactLook) && ui.contactLook !== 'theme' ? ui.contactLook : 'buttons');
+  const asLink = look === 'links' || look === 'text';
+  const action = (kind, href, icon, text, color, extra = '') => {
+    const bg = color || (look === 'brand' && BRAND[kind]) || '';
+    const style = bg ? (asLink ? ` style="color:${bg}"` : ` style="background:${bg};border-color:${bg};color:${onColor(bg)}"`) : '';
+    const klass = asLink ? `ili-clink ili-clink-${kind}` : `ili-cbtn ili-cbtn-${kind} ${alt}`;
+    return `<a class="${klass}" href="${esc(href)}"${extra}${style}>${look === 'text' ? '' : icon}<span>${text}</span></a>`;
+  };
   const acts = [];
-  if (c.whatsapp.on && waNumber(c.whatsapp.number)) acts.push(`<a class="ili-cbtn ili-cbtn-wa ${alt}" href="${esc(waLink(c))}" target="_blank" rel="noopener">${ICON.whatsapp}<span>WhatsApp</span></a>`);
-  if (c.phone.on && c.phone.number) acts.push(`<a class="ili-cbtn ili-cbtn-tel ${alt}" href="${esc(telLink(c.phone.number))}">${ICON.phone}<span>Call ${esc(c.phone.number)}</span></a>`);
-  if (c.email.on && c.email.address) acts.push(`<a class="ili-cbtn ili-cbtn-mail ${alt}" href="mailto:${esc(c.email.address)}">${ICON.email}<span>${esc(c.email.address)}</span></a>`);
+  if (c.whatsapp.on && waNumber(c.whatsapp.number)) acts.push(action('whatsapp', waLink(c), ICON.whatsapp, look === 'text' ? 'Message us on WhatsApp' : 'WhatsApp', c.whatsapp.color, ' target="_blank" rel="noopener"'));
+  if (c.phone.on && c.phone.number) acts.push(action('tel', telLink(c.phone.number), ICON.phone, `Call ${esc(c.phone.number)}`, c.phone.color));
+  if (c.email.on && c.email.address) acts.push(action('mail', `mailto:${c.email.address}`, ICON.email, esc(c.email.address), c.email.color));
   let form = '';
   if (c.form.on && c.form.fields.length) {
     const field = (x) => {
@@ -142,7 +163,7 @@ export function contactHtml(c, ui = {}) {
       + `${c.form.note ? `<p class="ili-cnote">${esc(c.form.note)}</p>` : ''}</form>`;
   }
   return `${c.title ? `<h2 class="ili-ctitle">${esc(c.title)}</h2>` : ''}${c.intro ? `<p class="ili-cintro">${esc(c.intro)}</p>` : ''}`
-    + `${acts.length ? `<div class="ili-cacts">${acts.join('')}</div>` : ''}${form}`;
+    + `${acts.length ? `<div class="ili-cacts${asLink ? ' ili-cacts-links' : ''}">${acts.join('')}</div>` : ''}${form}`;
 }
 
 /** Base styles of the modules. Low specificity (:where) so the theme's own styles always win. */
@@ -154,6 +175,10 @@ export const MODULE_CSS = `
 :where(.ili-cbtn){display:inline-flex;align-items:center;justify-content:center;gap:9px;padding:12px 20px;border-radius:var(--ili-radius,8px);font:inherit;font-weight:700;text-decoration:none;cursor:pointer;border:0;line-height:1.2;background:var(--ili-primary,#222);color:#fff}
 .ili-cbtn{display:inline-flex;align-items:center;justify-content:center;gap:9px}
 .ili-cbtn svg{width:20px;height:20px;flex:none}
+.ili-clink{display:inline-flex;align-items:center;gap:8px;font-weight:600;text-decoration:none;color:var(--ili-primary,inherit)}
+.ili-clink:hover span{text-decoration:underline}
+.ili-clink svg{width:20px;height:20px;flex:none}
+:where(.ili-cacts-links){gap:10px 26px}
 :where(.ili-cbtn-send){justify-self:start}
 :where(.ili-cform){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;max-width:680px}
 .ili-cform > label{display:grid;gap:6px;font-weight:600;font-size:.95em}
