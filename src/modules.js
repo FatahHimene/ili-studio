@@ -205,3 +205,54 @@ export function renderModules(html, { contact, ui = {}, preview = false }) {
 
 /** Labels of the form fields, so messages show "Preferred day" rather than "f_x8k2". */
 export const fieldLabels = (c) => Object.fromEntries((c?.form?.fields || []).map((f) => [f.id, f.label]));
+
+/**
+ * A theme (or older site) that still has its own <form data-ili-form>: turn every such form into a
+ * Contact module slot, and read the first form's fields, button text and small print, so the module
+ * starts exactly like the theme's form. Returns null when the page has no such form.
+ */
+export function adoptForms(html) {
+  if (!/data-ili-form/.test(html)) return null;
+  const $ = cheerio.load(html);
+  let form = null;
+  $('form[data-ili-form]').each((_, f) => {
+    const $f = $(f);
+    if (!form) {
+      const fields = [], used = new Set();
+      $f.find('input, textarea, select').each((__, el) => {
+        const $e = $(el);
+        const name = String($e.attr('name') || '').toLowerCase();
+        const tag = el.tagName.toLowerCase();
+        const raw = tag === 'input' ? String($e.attr('type') || 'text').toLowerCase() : tag;
+        if (!name || name.startsWith('_') || ['hidden', 'submit', 'button', 'checkbox', 'radio', 'file', 'reset', 'image'].includes(raw)) return;
+        const type = { email: 'email', tel: 'tel', date: 'date', textarea: 'textarea', select: 'select' }[raw] || 'text';
+        let id = name in STD ? name : 'f_' + (name.replace(/[^a-z0-9]/g, '') + 'xxx').slice(0, 18);
+        if (used.has(id)) return; used.add(id);
+        const lab = $e.closest('label');
+        let label = lab.length ? lab.clone().find('input, textarea, select, small').remove().end().text() : '';
+        if (!label.trim() && $e.attr('id')) label = $(`label[for="${$e.attr('id')}"]`).first().text();
+        label = (label.trim() || $e.attr('placeholder') || $e.attr('aria-label') || name).replace(/\s+/g, ' ').replace(/\s*\*\s*$/, '').slice(0, 80);
+        const options = type === 'select' ? $e.find('option').toArray().filter((o) => $(o).attr('value') !== '').map((o) => $(o).text().trim()).filter(Boolean).slice(0, 20) : null;
+        if (type === 'select' && !options.length) return;
+        fields.push({ id, label, type, required: $e.is('[required]'), ...(options ? { options } : {}) });
+      });
+      const btn = $f.find('button[type="submit"], button:not([type]), input[type="submit"]').first();
+      const submit = (btn.is('input') ? btn.attr('value') : btn.text()) || '';
+      const note = $f.children('p').last().text() || '';
+      form = { fields: fields.slice(0, 12), submit: submit.trim().slice(0, 40), note: note.replace(/\s+/g, ' ').trim().slice(0, 200) };
+    }
+    $f.replaceWith('<div data-ili-module="contact"></div>');
+  });
+  return { html: $.html(), form };
+}
+
+/** Contact settings for a new site: the brief's phone and email, and the theme's own form if it had one. */
+export function contactFromTheme(brief, form) {
+  const c = contactDefaults(brief);
+  if (form?.fields?.length && form.fields.some((f) => f.type === 'email' || f.type === 'tel')) {
+    c.form.fields = form.fields;
+    if (form.submit) c.form.submit = form.submit;
+    c.form.note = form.note;
+  }
+  return c;
+}

@@ -248,3 +248,8 @@ STUDIO_URL=http://ili-studio:3000
   - le nom de chaque champ est gardé avec le message (`labels`).
 - **Adresses de réception** : l'adresse du compte, plus jusqu'à 3 adresses en plus. Ces adresses ne reçoivent les messages qu'une fois confirmées. La confirmation par e-mail arrive avec l'étape « envoi des e-mails ».
 - **Formulaires écrits dans les thèmes** (`<form data-ili-form>`) : ils continuent de marcher, pour les sites déjà créés.
+- **Thème avec son propre formulaire** :
+  - à la création du site, chaque `<form data-ili-form>` du thème devient un emplacement Contact ;
+  - le module est activé avec les champs, le bouton et la mention du formulaire du thème, ainsi qu'avec le téléphone et l'e-mail du brief ;
+  - c'est la même chose pour les pages modèles du thème ajoutées plus tard ;
+  - pour les sites déjà créés, la fenêtre Modules propose « Switch to the Contact module » (`POST /api/sites/:id/modules/adopt`, qu'on peut annuler avec Undo).

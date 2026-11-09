@@ -22,7 +22,7 @@ import { clientIp } from './clientip.js';
 import { prepareForms, receive, emailText, listMessages, updateMessage, deleteMessage, thanksPage } from './forms.js';
 import { sendMail, mailEnabled } from './mail.js';
 import { PLATFORMS, cleanReviews, renderReviews, hasReviewsBlock } from './reviews.js';
-import { MODULES, contactOf, cleanContact, keepVerified, renderModules, sectionHtml, fieldLabels, contactDefaults } from './modules.js';
+import { MODULES, contactOf, cleanContact, keepVerified, renderModules, sectionHtml, fieldLabels, contactDefaults, adoptForms, contactFromTheme } from './modules.js';
 import { seoPage, seoFiles } from './seo.js';
 import { analyse, crawl, pagespeed } from './audit.js';
 import { PLANS, planOf, COSTS, FREE_DOMAIN, RESERVED } from './plans.js';
@@ -512,6 +512,7 @@ app.post('/api/sites/:id/pages', requireAuth, wrap(async (req, res) => {
     const tpl = theme?.templates.find((t) => t.id === req.body.template);
     if (!tpl) return res.status(404).json({ error: 'Template not found' });
     html = await fs.readFile(path.join(theme.dir, tpl.file), 'utf8');
+    html = adoptForms(html)?.html || html; // a form in the template becomes the Contact module
   } else {
     const $ = cheerio.load(await fs.readFile(store.safeJoin(dir, source), 'utf8'));
     if (from === 'blank') {
@@ -672,6 +673,14 @@ app.post('/api/sites/from-theme', requireAuth, wrap(async (req, res) => {
   for (let n = 2; await store.slugTaken(slug); n++) slug = `${store.slugify(brief.business)}-${n}`;
   const now = new Date().toISOString();
   const meta = { id, owner: req.user.id, name: brief.business, slug, pages: theme.pages, theme: { id: theme.id, version: theme.version }, palette: palette?.id || null, brief, createdAt: now, updatedAt: now, publishedAt: null, source: 'theme:' + theme.id, personalising: true };
+  // the theme's own contact form becomes the Contact module, switched on with the theme's fields
+  let themeForm = null;
+  for (const p of theme.pages) {
+    const f = store.safeJoin(store.draftDir(id), p);
+    const r = adoptForms(await fs.readFile(f, 'utf8'));
+    if (r) { await fs.writeFile(f, r.html); themeForm ||= r.form; }
+  }
+  meta.contact = contactFromTheme(brief, themeForm);
   await store.writeMeta(id, meta);
 
   const jobId = store.newId();
@@ -1133,6 +1142,27 @@ app.post('/api/sites/:id/contact', requireAuth, wrap(async (req, res) => {
   invalidateSites();
   res.json({ ok: true, contact: c });
 }));
+/** Turn the theme's own contact forms into the Contact module, keeping their fields (sites made before modules). */
+app.post('/api/sites/:id/modules/adopt', requireAuth, wrap(async (req, res) => {
+  const meta = await siteFor(req);
+  let form = null, changed = 0;
+  for (const p of meta.pages) {
+    const f = store.safeJoin(store.draftDir(meta.id), p);
+    const before = await fs.readFile(f, 'utf8');
+    const r = adoptForms(before);
+    if (!r) continue;
+    await store.pushHistory(meta.id, p, before);
+    await fs.writeFile(f, tag(r.html)); changed++;
+    form ||= r.form;
+  }
+  if (!changed) return res.status(400).json({ error: 'No theme form found on your pages' });
+  const m = await store.readMeta(meta.id);
+  if (!m.contact) m.contact = contactFromTheme(m.brief, form);
+  m.updatedAt = new Date().toISOString(); m.dirty = true;
+  await store.writeMeta(meta.id, m);
+  res.json({ ok: true, pages: changed });
+}));
+
 /** Add a module section to a page, after the selected element's section, or before the footer. Body: { type, page, after } */
 app.post('/api/sites/:id/modules/add', requireAuth, wrap(async (req, res) => {
   const meta = await siteFor(req);

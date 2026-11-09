@@ -792,7 +792,7 @@ $('#verList').onclick = async (e) => {
 function modInfo(k) {
   return {
     contact: { title: 'Contact module', text: 'WhatsApp, call and email buttons and the contact form come from your contact settings.', btn: 'Contact settings', open: openContact },
-    form: { title: 'Contact form', text: 'This form is part of the theme. For WhatsApp and call buttons and a form you can change, add the Contact module.', btn: 'Open modules', open: openModules },
+    form: { title: 'Contact form', text: 'This is the theme’s fixed form. Switch to the Contact module to change its fields and add WhatsApp and call buttons.', btn: 'Switch to the Contact module', open: openModules },
     reviews: { title: 'Customer reviews', text: 'Reviews shown here come from your reviews settings.', btn: 'Edit reviews', open: openReviews },
   }[k] || null;
 }
@@ -815,13 +815,19 @@ async function openModules() {
   wrap.innerHTML = `<div class="osheet mods" role="dialog" aria-modal="true" aria-label="Modules">
     <div class="ohead"><h2>Modules</h2><button class="btn btn-sm" type="button" data-close aria-label="Close">✕</button></div>
     <p class="ointro">Ready-made blocks that take your site's colours and fonts. ${state.sel ? 'They are added after the section you selected.' : 'They are added at the end of the page, before the footer. Select a section first to choose where.'}</p>
-    ${d.legacyForm ? '<p class="note small">Your pages use the theme’s own contact form. Add the Contact module to get WhatsApp and call buttons and a form you can change, then delete the old form.</p>' : ''}
+    ${d.legacyForm ? '<p class="note small">Your pages still use the theme’s fixed contact form. <button class="btn btn-sm btn-primary" type="button" id="mAdopt">Switch to the Contact module</button> It keeps the same fields, and adds WhatsApp and call buttons you can turn on.</p>' : ''}
     <ul class="mlist">${d.modules.map(card).join('')}</ul>
   </div>`;
   document.body.appendChild(wrap);
   const close = () => wrap.remove();
   wrap.addEventListener('click', async (e) => {
     if (e.target === wrap || e.target.closest('[data-close]')) return close();
+    if (e.target.id === 'mAdopt') {
+      e.target.disabled = true;
+      try { await api('/modules/adopt', { method: 'POST' }); state.meta.dirty = true; setStatus(); loadFrame(); close(); toast('Your form is now the Contact module · <a href="#" id="tModSet">Settings</a>'); setTimeout(() => { const u = document.getElementById('tModSet'); if (u) u.onclick = (ev) => { ev.preventDefault(); openContact(); }; }, 0); }
+      catch (err) { e.target.disabled = false; toast(esc(err.message), true); }
+      return;
+    }
     const li = e.target.closest('[data-m]'); if (!li) return;
     const m = li.dataset.m;
     if (e.target.closest('[data-set]')) { close(); return m === 'contact' ? openContact() : openReviews(); }
