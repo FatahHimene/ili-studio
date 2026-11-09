@@ -11,7 +11,7 @@ import * as store from './store.js';
 import { importUpload, ImportError } from './importer.js';
 import { tag } from './html.js';
 import * as cheerio from 'cheerio';
-import { applyOps, injectEditor, strip, title, elementForAi, STYLE_OK } from './html.js';
+import { applyOps, injectEditor, strip, title, elementForAi, STYLE_OK, ID_ATTR } from './html.js';
 import { wren, aiStatus, AiError, ping, askJson } from './ai.js';
 import { searchPhotos, importPhoto, saveImage, bankStatus, ImageError } from './images.js';
 import { listThemes, getTheme, publicTheme, installTheme, removeTheme, restoreTheme, copyThemeTo, applyPalette } from './themes.js';
@@ -22,6 +22,7 @@ import { clientIp } from './clientip.js';
 import { prepareForms, receive, emailText, listMessages, updateMessage, deleteMessage, thanksPage } from './forms.js';
 import { sendMail, mailEnabled } from './mail.js';
 import { PLATFORMS, cleanReviews, renderReviews, hasReviewsBlock } from './reviews.js';
+import { MODULES, contactOf, cleanContact, keepVerified, renderModules, sectionHtml, fieldLabels, contactDefaults } from './modules.js';
 import { seoPage, seoFiles } from './seo.js';
 import { analyse, crawl, pagespeed } from './audit.js';
 import { PLANS, planOf, COSTS, FREE_DOMAIN, RESERVED } from './plans.js';
@@ -743,6 +744,7 @@ app.post('/api/sites/:id/publish', requireAuth, wrap(async (req, res) => {
     if (others >= maxLive) return res.status(403).json({ error: `Your ${planOf(req.user).name} plan can have ${maxLive} published site${maxLive > 1 ? 's' : ''}. Unpublish the other one first, or choose a plan.`, code: 'publish_limit' });
   }
   const { live, locked } = publishable(meta, req.user);
+  const ui = await uiOf(meta);
   const seo = [];
   const src = store.draftDir(meta.id);
   const tmp = store.publishedDir(meta.id) + '.tmp';
@@ -751,7 +753,7 @@ app.post('/api/sites/:id/publish', requireAuth, wrap(async (req, res) => {
   for (const page of meta.pages) {
     const f = store.safeJoin(tmp, page);
     if (!live.includes(page)) { await fs.rm(f, { force: true }); continue; }
-    let html = strip(await fs.readFile(f, 'utf8'));
+    let html = strip(renderModules(await fs.readFile(f, 'utf8'), { contact: contactOf(meta), ui }));
     if (locked.length) html = unlinkPages(html, page, locked);
     html = prepareForms(html);
     if (req.user.role !== 'admin' && planOf(req.user).id === 'free') html = addBadge(html, sub);
@@ -864,7 +866,12 @@ app.get('/frame/:id/:token/{*path}', wrap(async (req, res) => {
   res.setHeader('Content-Security-Policy', SANDBOX);
   res.setHeader('Cache-Control', 'no-store');
   corsOk(res);
-  if (/\.html?$/i.test(file)) return res.type('html').send(injectEditor(await fs.readFile(file, 'utf8'), VERSION));
+  if (/\.html?$/i.test(file)) {
+    const meta = await store.readMeta(id).catch(() => null);
+    let html = await fs.readFile(file, 'utf8');
+    if (meta) html = renderModules(html, { contact: contactOf(meta), ui: await uiOf(meta), preview: true });
+    return res.type('html').send(injectEditor(html, VERSION));
+  }
   res.sendFile(file);
 }));
 
@@ -1093,6 +1100,68 @@ app.post('/api/sites/:id/seo-write', requireAuth, wrap(async (req, res) => {
   } catch (e) { res.status(400).json({ error: aiMsg(e, req.user, 'Wren could not write this. Try again.') }); }
 }));
 
+// ---- modules ------------------------------------------------------------------------------------
+/** The theme's own class names for buttons, forms and sections (theme.json "ui"), so modules look native. */
+async function uiOf(meta) {
+  if (!meta?.theme?.id) return {};
+  const t = await getTheme(meta.theme.id).catch(() => null);
+  return t?.ui && typeof t.ui === 'object' ? t.ui : {};
+}
+const planRank = { free: 0, essential: 1, plus: 2, pro: 3 };
+app.get('/api/sites/:id/modules', requireAuth, wrap(async (req, res) => {
+  const meta = await siteFor(req);
+  const plan = req.user.role === 'admin' ? 'pro' : planOf(req.user).id;
+  const on = { contact: [], reviews: [] };
+  for (const p of meta.pages) {
+    const html = await fs.readFile(store.safeJoin(store.draftDir(meta.id), p), 'utf8').catch(() => '');
+    if (/data-ili-module="contact"|data-ili-form=/.test(html)) on.contact.push(p);
+    if (hasReviewsBlock(html)) on.reviews.push(p);
+  }
+  res.json({
+    modules: MODULES.map((m) => ({ ...m, allowed: planRank[plan] >= planRank[m.plan], pages: on[m.id] || [] })),
+    contact: contactOf(meta), ownerEmail: req.user.email,
+    legacyForm: on.contact.length > 0 && !(await Promise.all(on.contact.map(async (p) => /data-ili-module="contact"/.test(await fs.readFile(store.safeJoin(store.draftDir(meta.id), p), 'utf8'))))).some(Boolean),
+  });
+}));
+app.post('/api/sites/:id/contact', requireAuth, wrap(async (req, res) => {
+  const meta = await siteFor(req);
+  let c;
+  try { c = keepVerified(cleanContact(req.body, req.user.email), meta.contact); } catch (e) { return res.status(400).json({ error: e.message }); }
+  const m = await store.readMeta(meta.id);
+  m.contact = c; m.updatedAt = new Date().toISOString(); if (m.publishedAt) m.dirty = true;
+  await store.writeMeta(meta.id, m);
+  invalidateSites();
+  res.json({ ok: true, contact: c });
+}));
+/** Add a module section to a page, after the selected element's section, or before the footer. Body: { type, page, after } */
+app.post('/api/sites/:id/modules/add', requireAuth, wrap(async (req, res) => {
+  const meta = await siteFor(req);
+  const page = String(req.body.page || 'index.html');
+  if (!meta.pages.includes(page)) return res.status(404).json({ error: 'Page not found' });
+  const mod = MODULES.find((x) => x.id === req.body.type);
+  if (!mod || !mod.ready) return res.status(400).json({ error: 'This module is not available yet' });
+  const plan = req.user.role === 'admin' ? 'pro' : planOf(req.user).id;
+  if (planRank[plan] < planRank[mod.plan]) return res.status(403).json({ error: `${mod.name} comes with the ${mod.plan[0].toUpperCase() + mod.plan.slice(1)} plan.`, code: 'plan' });
+  const f = store.safeJoin(store.draftDir(meta.id), page);
+  const before = await fs.readFile(f, 'utf8');
+  const $ = cheerio.load(before);
+  const block = sectionHtml(mod.id, await uiOf(meta));
+  const after = String(req.body.after || '');
+  let anchor = after && /^[\w-]{1,40}$/.test(after) ? $(`[${ID_ATTR}="${after}"]`).first() : null;
+  if (anchor?.length) { while (anchor.parent().length && !['body', 'main'].includes(anchor.parent()[0].tagName)) anchor = anchor.parent(); anchor.after(block); }
+  else if ($('body > footer, main + footer').last().length) $('body > footer, main + footer').last().before(block);
+  else ($('main').length ? $('main') : $('body')).append(block);
+  let html = $.html();
+  if (mod.id === 'reviews' && meta.reviews) html = renderReviews(html, meta.reviews);
+  await store.pushHistory(meta.id, page, before);
+  await fs.writeFile(f, tag(html));
+  const m = await store.readMeta(meta.id);
+  m.updatedAt = new Date().toISOString(); m.dirty = true;
+  if (mod.id === 'contact' && !m.contact) m.contact = contactDefaults(m.brief);
+  await store.writeMeta(meta.id, m);
+  res.json({ ok: true, undo: await store.historyCount(meta.id, page) });
+}));
+
 // ---- reviews -----------------------------------------------------------------------------------
 app.get('/api/sites/:id/reviews', requireAuth, wrap(async (req, res) => {
   const meta = await siteFor(req);
@@ -1121,11 +1190,15 @@ app.post('/api/sites/:id/reviews', requireAuth, wrap(async (req, res) => {
 /** Keep a form message and e-mail the owner. Returns what to show the visitor: { status, html } or { redirect }. */
 async function processForm(site, body, ip) {
   let r;
-  try { r = await receive(site, body, ip); }
+  const contact = site.contact || null;
+  const def = body?._m === 'contact' && contact?.form?.on ? contact.form.fields : null;
+  try { r = await receive(site, body, ip, def); }
   catch (e) { return { status: 400, html: thanksPage(site, e.message) }; }
   if (!r.spam) {
     const owner = site.owner ? await users.get(site.owner) : null;
-    const to = owner && owner.role !== 'admin' ? owner.email : process.env.ADMIN_NOTIFY_EMAIL;
+    // the account address, plus any extra address the owner added and confirmed
+    const extra = (contact?.recipients || []).filter((x) => x.verified).map((x) => x.email);
+    const to = [owner && owner.role !== 'admin' ? owner.email : process.env.ADMIN_NOTIFY_EMAIL, ...extra].filter(Boolean).join(', ');
     if (to) {
       const f = r.message.fields;
       sendMail({ to, subject: `New message from your website${f.name ? ': ' + f.name.slice(0, 60) : ''}`, text: emailText(site, r.message, process.env.APP_URL), replyTo: f.email })

@@ -89,6 +89,7 @@
         return n !== el && n.hasAttribute(ID) && !['BODY', 'MAIN', 'HTML'].includes(n.tagName) ? n.getAttribute(ID) : null;
       })(),
       hasPrev: !!el.previousElementSibling, hasNext: !!el.nextElementSibling,
+      module: (() => { const m = el.closest('[data-ili-module]'); if (m) return m.getAttribute('data-ili-module'); return el.closest('[data-ili-reviews], [data-ili-reviews-summary], [data-ili-reviews-cta]') ? 'reviews' : el.closest('form[data-ili-form]') ? 'form' : null; })(),
       style: styleOf(el),
     };
   }

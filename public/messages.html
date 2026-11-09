@@ -60,7 +60,7 @@
         const extra = Object.entries(f).filter(([k]) => !['name', 'message'].includes(k));
         return `<article class="msg ${m.read ? 'read' : 'unread'}" data-site="${esc(m.site)}" data-id="${esc(m.id)}">
           <div class="mh"><b>${esc(f.name || 'Someone')}</b><span class="tag">${esc(m.siteName || '')}</span>${m.read ? '' : '<span class="tag tag-live">New</span>'}<span class="when">${new Date(m.at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span></div>
-          ${extra.length ? `<dl class="fields">${extra.map(([k, v]) => `<dt>${esc(LABEL[k] || k)}</dt><dd>${k === 'email' ? `<a href="mailto:${esc(v)}">${esc(v)}</a>` : k === 'phone' ? `<a href="tel:${esc(v.replace(/[^\d+]/g, ''))}">${esc(v)}</a>` : esc(v)}</dd>`).join('')}</dl>` : ''}
+          ${extra.length ? `<dl class="fields">${extra.map(([k, v]) => `<dt>${esc(m.labels?.[k] || LABEL[k] || k)}</dt><dd>${k === 'email' ? `<a href="mailto:${esc(v)}">${esc(v)}</a>` : k === 'phone' ? `<a href="tel:${esc(v.replace(/[^\d+]/g, ''))}">${esc(v)}</a>` : esc(v)}</dd>`).join('')}</dl>` : ''}
           ${f.message ? `<p class="body">${esc(f.message)}</p>` : ''}
           <div class="acts">
             ${f.email ? `<a class="btn btn-sm btn-primary" href="mailto:${esc(f.email)}?subject=${encodeURIComponent('Re: your message to ' + (m.siteName || 'us'))}">Reply by e-mail</a>` : ''}

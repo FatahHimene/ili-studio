@@ -12,7 +12,14 @@
     "handyman"
   ],
   "description": "Technical test theme to check the theme → brief → personalisation pipeline. Not a final design.",
-  "version": "0.1.0",
+  "version": "0.2.0",
+  "ui": {
+    "button": "btn alt",
+    "buttonAlt": "btn",
+    "form": "form",
+    "section": "contact",
+    "container": "wrap"
+  },
   "pages": [
     "index.html",
     "contact.html"

@@ -41,12 +41,32 @@ const LABELS = { name: 'Name', email: 'Email', phone: 'Phone', message: 'Message
 const label = (k) => LABELS[k] || k.replace(/[_-]+/g, ' ').replace(/^./, (c) => c.toUpperCase());
 
 /** Validate and keep a submission. Returns { ok, spam, message } or throws a user-facing Error. */
-export async function receive(site, body, ip) {
+/** `def`: the fields of the contact module's form (from the site's settings), when the message comes from it. */
+export async function receive(site, body, ip, def = null) {
   const b = body && typeof body === 'object' ? body : {};
   if (String(b._hp || '').trim()) return { ok: true, spam: true }; // the trap was filled: pretend it worked
   if (tooMany('ip:' + ip, 5, 10 * 60 * 1000)) throw new Error('Too many messages from your connection. Please try again later.');
   if (tooMany('site:' + site.id, 60, 24 * 60 * 60 * 1000)) throw new Error('This form is receiving too many messages right now. Please try again tomorrow, or call us.');
   const fields = {};
+  if (def) {
+    // contact module: only the fields the owner set up, with their own names
+    const labels = {};
+    for (const f of def) {
+      const raw = b[f.id];
+      const val = (Array.isArray(raw) ? raw.join(', ') : String(raw ?? '')).replace(/\r/g, '').trim().slice(0, f.type === 'textarea' ? 5000 : 300);
+      if (f.required && !val) throw new Error(`Please fill in “${f.label}”.`);
+      if (f.type === 'select' && val && !(f.options || []).includes(val)) throw new Error(`Please choose an option for “${f.label}”.`);
+      if (val) { fields[f.id] = val; labels[f.id] = f.label; }
+    }
+    if (!Object.keys(fields).length) throw new Error('The form was empty.');
+    if (fields.email && !EMAIL_RE.test(fields.email)) throw new Error('Please enter a valid email address.');
+    const text = Object.values(fields).join(' ');
+    const spam = (text.match(/https?:\/\//gi) || []).length > 3;
+    const msg = { id: `${Date.now()}-${crypto.randomBytes(3).toString('hex')}`, form: 'contact', at: new Date().toISOString(), fields, labels, read: false, spam };
+    await fs.mkdir(msgDir(site.id), { recursive: true });
+    await fs.writeFile(path.join(msgDir(site.id), msg.id + '.json'), JSON.stringify(msg, null, 2));
+    return { ok: true, spam, message: msg };
+  }
   for (const [k, v] of Object.entries(b)) {
     if (k.startsWith('_') || !/^[a-z][\w-]{0,30}$/i.test(k) || Object.keys(fields).length >= 12) continue;
     const val = (Array.isArray(v) ? v.join(', ') : String(v ?? '')).replace(/\r/g, '').trim();
@@ -63,7 +83,8 @@ export async function receive(site, body, ip) {
 }
 
 export function emailText(site, msg, appUrl) {
-  const lines = Object.entries(msg.fields).map(([k, v]) => (k === 'message' ? `\n${label(k)}:\n${v}\n` : `${label(k)}: ${v}`));
+  const name = (k) => msg.labels?.[k] || label(k);
+  const lines = Object.entries(msg.fields).map(([k, v]) => (k === 'message' ? `\n${name(k)}:\n${v}\n` : `${name(k)}: ${v}`));
   return `New message from your website ${site.name}\n\n${lines.join('\n')}\n\n—\nReply to this e-mail to answer ${msg.fields.name || 'your visitor'} directly.\n${appUrl ? `All your messages: ${appUrl.replace(/\/$/, '')}/messages\n` : ''}Sent by ili studio · Ilidweb`;
 }
 

@@ -118,6 +118,9 @@ function show(info) {
   $('#gLink').hidden = !info.link;
   if (info.link) { $('#href').value = info.link.href; $('#blank').checked = info.link.blank; }
   $('#moveUp').disabled = !info.hasPrev; $('#moveDown').disabled = !info.hasNext;
+  const mod = modInfo(info.module);
+  $('#gModule').hidden = !mod;
+  if (mod) { $('#gModTitle').textContent = mod.title; $('#gModText').textContent = mod.text; $('#gModBtn').textContent = mod.btn; $('#gModBtn').onclick = mod.open; }
   const root = ['body', 'html', 'main'].includes(info.tag);
   $('#del').disabled = root; $('#dup').disabled = root;
   $('#qDel').disabled = root; $('#qDup').disabled = root; $('#qUp').disabled = !info.hasPrev; $('#qDown').disabled = !info.hasNext;
@@ -659,10 +662,7 @@ const WIDGET_HELP = {
   feefo: 'In Feefo Hub, open the widget settings and copy the embed code.',
   reviewsio: 'In your Reviews.io dashboard, open Integrations → Widgets and copy the code.',
 };
-async function loadReviewsBtn() {
-  try { const d = await api('/reviews'); $('#revBtn').hidden = !d.pages.length; return d; } catch { return null; }
-}
-$('#revBtn').onclick = async () => {
+async function openReviews() {
   const d = await api('/reviews');
   const rv = d.reviews || { platform: 'google', mode: 'manual', items: [], profileUrl: '', reviewUrl: '', overall: null, count: null, widget: '', genuine: false };
   const st = JSON.parse(JSON.stringify(rv));
@@ -741,8 +741,7 @@ $('#revBtn').onclick = async () => {
       api(`?page=${encodeURIComponent(state.page)}`).then((x) => { $('#undo').disabled = !x.undo; });
     } catch (e) { q('#rvMsg').textContent = e.message; btn.disabled = false; }
   };
-};
-loadReviewsBtn();
+}
 
 // ---- versions ---------------------------------------------------------------------------------
 const KIND = { publish: 'Published', manual: 'Saved', auto: 'Auto' };
@@ -788,3 +787,151 @@ $('#verList').onclick = async (e) => {
     toast('Back to that version. Your previous state was saved as a version too. Publish to put it online.');
   } catch (err) { toast(esc(err.message), true); }
 };
+
+// ---- modules ----------------------------------------------------------------------------------
+function modInfo(k) {
+  return {
+    contact: { title: 'Contact module', text: 'WhatsApp, call and email buttons and the contact form come from your contact settings.', btn: 'Contact settings', open: openContact },
+    form: { title: 'Contact form', text: 'This form is part of the theme. For WhatsApp and call buttons and a form you can change, add the Contact module.', btn: 'Open modules', open: openModules },
+    reviews: { title: 'Customer reviews', text: 'Reviews shown here come from your reviews settings.', btn: 'Edit reviews', open: openReviews },
+  }[k] || null;
+}
+const PLAN_NAME = { free: 'Free', essential: 'Essential', plus: 'Plus', pro: 'Pro' };
+
+async function openModules() {
+  let d;
+  try { d = await api('/modules'); } catch (e) { return toast(esc(e.message), true); }
+  const wrap = document.createElement('div'); wrap.className = 'omodal';
+  const card = (m) => {
+    const here = m.pages.includes(state.page);
+    const where = m.pages.length ? `<span class="tag tag-live">On ${m.pages.length === 1 ? (m.pages[0] === state.page ? 'this page' : '1 page') : m.pages.length + ' pages'}</span>` : '';
+    const acts = !m.ready ? '<span class="tag">Coming soon</span>'
+      : !m.allowed ? `<button class="btn btn-sm" type="button" data-up="${m.plan}">${PLAN_NAME[m.plan]} plan →</button>`
+      : `${m.id === 'contact' || m.id === 'reviews' ? '<button class="btn btn-sm" type="button" data-set>Settings</button>' : ''}<button class="btn btn-sm btn-primary" type="button" data-add${here ? ' title="Already on this page: add it again somewhere else"' : ''}>${here ? 'Add again' : 'Add to this page'}</button>`;
+    return `<li class="mcard${m.ready ? '' : ' soon'}" data-m="${m.id}"><span class="mic" aria-hidden="true">${m.icon}</span>
+      <div class="mtx"><b>${esc(m.name)}${m.plan !== 'free' ? ` <span class="tag">${PLAN_NAME[m.plan]}</span>` : ''}</b><span>${esc(m.text)}</span>${where}</div>
+      <div class="macts">${acts}</div></li>`;
+  };
+  wrap.innerHTML = `<div class="osheet mods" role="dialog" aria-modal="true" aria-label="Modules">
+    <div class="ohead"><h2>Modules</h2><button class="btn btn-sm" type="button" data-close aria-label="Close">✕</button></div>
+    <p class="ointro">Ready-made blocks that take your site's colours and fonts. ${state.sel ? 'They are added after the section you selected.' : 'They are added at the end of the page, before the footer. Select a section first to choose where.'}</p>
+    ${d.legacyForm ? '<p class="note small">Your pages use the theme’s own contact form. Add the Contact module to get WhatsApp and call buttons and a form you can change, then delete the old form.</p>' : ''}
+    <ul class="mlist">${d.modules.map(card).join('')}</ul>
+  </div>`;
+  document.body.appendChild(wrap);
+  const close = () => wrap.remove();
+  wrap.addEventListener('click', async (e) => {
+    if (e.target === wrap || e.target.closest('[data-close]')) return close();
+    const li = e.target.closest('[data-m]'); if (!li) return;
+    const m = li.dataset.m;
+    if (e.target.closest('[data-set]')) { close(); return m === 'contact' ? openContact() : openReviews(); }
+    if (e.target.closest('[data-up]')) { const { offersModal } = await import('/_ili/offers.js'); return offersModal({ title: 'Unlock more modules', intro: 'Booking and online payments come with Plus, the mini shop with Pro.', current: me.plan }); }
+    const add = e.target.closest('[data-add]');
+    if (add) {
+      add.disabled = true;
+      try {
+        const r = await api('/modules/add', { method: 'POST', body: JSON.stringify({ type: m, page: state.page, after: state.sel?.sectionId || state.sel?.id || '' }) });
+        state.meta.dirty = true; setStatus(); loadFrame(); $('#undo').disabled = !r.undo; close();
+        toast(`${m === 'contact' ? 'Contact' : 'Reviews'} added · <a href="#" id="tModSet">Settings</a>`);
+        setTimeout(() => { const u = document.getElementById('tModSet'); if (u) u.onclick = (ev) => { ev.preventDefault(); m === 'contact' ? openContact() : openReviews(); }; }, 0);
+      } catch (err) { add.disabled = false; toast(esc(err.message), true); }
+    }
+  });
+}
+$('#modBtn').onclick = openModules;
+
+const FTYPES = { text: 'Short text', email: 'Email', tel: 'Phone', textarea: 'Long text', select: 'List of choices', date: 'Date' };
+async function openContact() {
+  let d;
+  try { d = await api('/modules'); } catch (e) { return toast(esc(e.message), true); }
+  const c = JSON.parse(JSON.stringify(d.contact));
+  const wrap = document.createElement('div'); wrap.className = 'omodal';
+  wrap.innerHTML = `<div class="osheet cset" role="dialog" aria-modal="true" aria-label="Contact settings">
+    <div class="ohead"><h2>Contact</h2><button class="btn btn-sm" type="button" data-close aria-label="Close">✕</button></div>
+    <p class="ointro">Choose how visitors can reach you. It is the same on every page where the Contact module is.</p>
+    <section class="cs"><h3>Buttons</h3>
+      <div class="crow"><label class="check"><input type="checkbox" id="cWa"> WhatsApp</label><input class="input" id="cWaNum" placeholder="07700 900123" inputmode="tel"><input class="input" id="cWaMsg" placeholder="First message, e.g. Hello, I found you on your website."></div>
+      <div class="crow"><label class="check"><input type="checkbox" id="cTel"> Call</label><input class="input" id="cTelNum" placeholder="01273 123456" inputmode="tel"></div>
+      <div class="crow"><label class="check"><input type="checkbox" id="cMail"> Email</label><input class="input" id="cMailAd" placeholder="hello@yourbusiness.co.uk" inputmode="email"></div>
+      <label class="check"><input type="checkbox" id="cFloat"> Also show a round WhatsApp button in the corner of every page</label>
+    </section>
+    <section class="cs"><h3><label class="check"><input type="checkbox" id="cForm"> Contact form</label></h3>
+      <div id="cFormBox">
+        <ul class="flist" id="cFields"></ul>
+        <button class="btn btn-sm" type="button" id="cAdd">+ Add a field</button>
+        <div class="rgrid"><label class="field"><span>Button text</span><input class="input" id="cSubmit" maxlength="40"></label>
+          <label class="field"><span>Small print under the form</span><input class="input" id="cNote" maxlength="200"></label></div>
+      </div>
+    </section>
+    <section class="cs"><h3>Where messages go</h3>
+      <p class="small">Every message is in your <a href="/messages" target="_blank">Messages</a> and e-mailed to <b>${esc(d.ownerEmail)}</b>.</p>
+      <ul class="rlist2" id="cRec"></ul>
+      <div class="crow"><input class="input" id="cRecNew" placeholder="Also send to another address, e.g. office@yourbusiness.co.uk" inputmode="email"><button class="btn btn-sm" type="button" id="cRecAdd">Add</button></div>
+      <p class="muted small">We ask each extra address to confirm before sending it messages, so nobody receives them by mistake.</p>
+    </section>
+    <div class="row"><button class="btn btn-primary" type="button" id="cSave">Save</button><span class="muted small" id="cMsg"></span></div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const q = (s) => wrap.querySelector(s);
+  const close = () => wrap.remove();
+  wrap.addEventListener('click', (e) => { if (e.target === wrap || e.target.closest('[data-close]')) close(); });
+  q('#cWa').checked = c.whatsapp.on; q('#cWaNum').value = c.whatsapp.number; q('#cWaMsg').value = c.whatsapp.message;
+  q('#cTel').checked = c.phone.on; q('#cTelNum').value = c.phone.number;
+  q('#cMail').checked = c.email.on; q('#cMailAd').value = c.email.address;
+  q('#cFloat').checked = c.float.on;
+  q('#cForm').checked = c.form.on; q('#cSubmit').value = c.form.submit; q('#cNote').value = c.form.note;
+  const sync = () => {
+    for (const [box, ...inputs] of [['#cWa', '#cWaNum', '#cWaMsg'], ['#cTel', '#cTelNum'], ['#cMail', '#cMailAd']]) inputs.forEach((i) => { q(i).disabled = !q(box).checked; });
+    q('#cFloat').disabled = !q('#cWa').checked; if (!q('#cWa').checked) q('#cFloat').checked = false;
+    q('#cFormBox').hidden = !q('#cForm').checked;
+  };
+  const fields = () => {
+    q('#cFields').innerHTML = c.form.fields.map((f, i) => `<li data-i="${i}">
+      <div class="frow"><input class="input" data-k="label" value="${esc(f.label)}" placeholder="Field name" maxlength="80" aria-label="Field name">
+        <select class="input" data-k="type" aria-label="Type">${Object.entries(FTYPES).map(([k, v]) => `<option value="${k}"${k === f.type ? ' selected' : ''}>${v}</option>`).join('')}</select>
+        <label class="check"><input type="checkbox" data-k="required"${f.required ? ' checked' : ''}> Required</label>
+        <button class="btn btn-sm btn-icon" type="button" data-mv="-1" aria-label="Move up"${i ? '' : ' disabled'}>↑</button>
+        <button class="btn btn-sm btn-icon" type="button" data-mv="1" aria-label="Move down"${i < c.form.fields.length - 1 ? '' : ' disabled'}>↓</button>
+        <button class="btn btn-sm btn-icon btn-danger" type="button" data-rm aria-label="Remove this field">✕</button></div>
+      ${f.type === 'select' ? `<textarea class="input" data-k="options" rows="3" placeholder="One choice per line, e.g.\nBoiler repair\nNew boiler\nBathroom">${esc((f.options || []).join('\n'))}</textarea>` : ''}
+    </li>`).join('');
+  };
+  const recs = () => {
+    q('#cRec').innerHTML = c.recipients.map((r, i) => `<li data-i="${i}"><span>${esc(r.email)}</span><span class="tag${r.verified ? ' tag-live' : ''}">${r.verified ? 'Confirmed' : 'Waiting for confirmation'}</span><button class="btn btn-sm btn-icon btn-danger" type="button" data-rm aria-label="Remove">✕</button></li>`).join('');
+    q('#cRecNew').disabled = q('#cRecAdd').disabled = c.recipients.length >= 3;
+  };
+  sync(); fields(); recs();
+  wrap.addEventListener('change', (e) => { if (e.target.type === 'checkbox' && e.target.id) sync(); });
+  q('#cFields').addEventListener('input', (e) => {
+    const li = e.target.closest('li'); const k = e.target.dataset.k; if (!li || !k) return;
+    const f = c.form.fields[li.dataset.i];
+    if (k === 'required') f.required = e.target.checked;
+    else if (k === 'options') f.options = e.target.value.split('\n');
+    else { f[k] = e.target.value; if (k === 'type') fields(); }
+  });
+  q('#cFields').addEventListener('click', (e) => {
+    const li = e.target.closest('li'); if (!li) return; const i = Number(li.dataset.i);
+    if (e.target.closest('[data-rm]')) { c.form.fields.splice(i, 1); fields(); }
+    const mv = e.target.closest('[data-mv]'); if (mv) { const j = i + Number(mv.dataset.mv); [c.form.fields[i], c.form.fields[j]] = [c.form.fields[j], c.form.fields[i]]; fields(); }
+  });
+  q('#cAdd').onclick = () => { if (c.form.fields.length >= 12) return toast('12 fields at most', true); c.form.fields.push({ id: '', label: '', type: 'text', required: false }); fields(); q('#cFields li:last-child [data-k="label"]').focus(); };
+  q('#cRecAdd').onclick = () => { const v = q('#cRecNew').value.trim(); if (!v) return; c.recipients.push({ email: v, verified: false }); q('#cRecNew').value = ''; recs(); };
+  q('#cRec').addEventListener('click', (e) => { const li = e.target.closest('li'); if (li && e.target.closest('[data-rm]')) { c.recipients.splice(Number(li.dataset.i), 1); recs(); } });
+  q('#cSave').onclick = async () => {
+    const btn = q('#cSave'); btn.disabled = true; q('#cMsg').textContent = 'Saving…';
+    const body = {
+      title: c.title, intro: c.intro,
+      whatsapp: { on: q('#cWa').checked, number: q('#cWaNum').value, message: q('#cWaMsg').value },
+      phone: { on: q('#cTel').checked, number: q('#cTelNum').value },
+      email: { on: q('#cMail').checked, address: q('#cMailAd').value },
+      float: { on: q('#cFloat').checked },
+      form: { on: q('#cForm').checked, fields: c.form.fields, submit: q('#cSubmit').value, note: q('#cNote').value },
+      recipients: c.recipients,
+    };
+    try {
+      await api('/contact', { method: 'POST', body: JSON.stringify(body) });
+      if (state.meta.publishedAt) state.meta.dirty = true;
+      setStatus(); loadFrame(); close(); toast('Contact settings saved');
+    } catch (err) { q('#cMsg').textContent = err.message; btn.disabled = false; }
+  };
+}

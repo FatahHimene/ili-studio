@@ -30,7 +30,7 @@
     </div>
     <button class="btn btn-sm btn-icon" id="fsBtn" type="button" title="Full-screen preview" aria-label="Full-screen preview">⛶</button>
     <button class="btn btn-sm" id="colBtn" type="button" hidden title="Change the site's colour palette">Colours</button>
-    <button class="btn btn-sm" id="revBtn" type="button" hidden title="Add your customer reviews">★ Reviews</button>
+    <button class="btn btn-sm" id="modBtn" type="button" aria-haspopup="dialog" title="Contact buttons and form, reviews, booking, payments, shop">✦ Modules</button>
     <div class="right">
       <span class="status" id="status" aria-live="polite">Loading…</span>
       <button class="btn btn-sm" id="undo" title="Undo (Ctrl+Z)" disabled>↶ Undo</button>
@@ -73,6 +73,11 @@
           <button class="btn btn-sm btn-danger" id="qDel" type="button" title="Delete (Del key)">Delete</button>
         </div>
 
+        <div class="group gmod" id="gModule" hidden>
+          <h3 id="gModTitle">Module</h3>
+          <p class="muted small" id="gModText"></p>
+          <button class="btn btn-sm btn-primary" id="gModBtn" type="button">Settings</button>
+        </div>
         <div class="group wren" id="gWren">
           <h3>Ask Wren <span class="tag" id="wrenTag">AI</span></h3>
           <div class="chips" id="wrenChips"></div>

@@ -222,3 +222,29 @@ STUDIO_URL=http://ili-studio:3000
   - Les robots et les préchargements ne sont pas comptés.
 - **Pays** : base DB-IP Lite, licence CC BY 4.0. Elle est téléchargée au démarrage puis tous les 30 jours dans `DATA_DIR/geo`, depuis jsDelivr ou unpkg (paquet `@ip-location-db/dbip-country`). La mention « IP Geolocation by DB-IP » doit rester sur la page Stats. Quand Cloudflare fournit `CF-IPCountry`, cette information est utilisée en priorité.
 - **Suppression** : supprimer un site efface aussi ses statistiques. Le dépublier les garde.
+
+## Modules (Contact, Avis, puis Réservation, Paiement, Boutique)
+
+- **Bouton « ✦ Modules » dans l'éditeur.** Il ajoute un module après la section sélectionnée, ou en bas de page avant le pied de page.
+  - Les modules payants (Réservation et planning, Paiement en ligne, Mini boutique) apparaissent avec leur offre et la mention « Coming soon ».
+  - Quand on clique sur un module dans l'aperçu, le panneau de droite affiche son bouton de réglages.
+- **Les modules prennent le style du thème sans être écrits pour lui :**
+  - **variables CSS standard des thèmes** : `--ili-primary`, `--ili-accent`, `--ili-ink`, `--ili-bg`, `--ili-soft`, `--ili-font-head`, `--ili-font-body`, `--ili-radius` ;
+  - **`"ui"` dans `theme.json`** (facultatif) : les classes du thème que les modules réutilisent :
+    ```json
+    "ui": { "button": "btn alt", "buttonAlt": "btn", "form": "form", "section": "contact", "container": "wrap" }
+    ```
+  - **CSS de base des modules** (`MODULE_CSS` dans `src/modules.js`) : écrit avec `:where()`, donc le CSS du thème garde toujours la priorité.
+- **Module Contact** (`<div data-ili-module="contact"></div>` dans une page) :
+  - boutons WhatsApp (avec un premier message déjà rempli), Appeler et E-mail ;
+  - bouton WhatsApp rond en bas de toutes les pages, en option ;
+  - formulaire avec jusqu'à 12 champs que le client gère lui-même : texte, e-mail, téléphone, texte long, liste de choix, date ; chaque champ peut être obligatoire ;
+  - texte du bouton et petite mention sous le formulaire modifiables.
+- **Réglages du module Contact** :
+  - ils sont enregistrés pour tout le site, dans `meta.contact` ;
+  - l'emplacement est rempli à l'affichage (aperçu de l'éditeur et publication), jamais écrit dans le brouillon : le module reste toujours à jour.
+- **Messages reçus par le module Contact** :
+  - seuls les champs prévus sont acceptés, et les champs obligatoires ainsi que les listes de choix sont vérifiés ;
+  - le nom de chaque champ est gardé avec le message (`labels`).
+- **Adresses de réception** : l'adresse du compte, plus jusqu'à 3 adresses en plus. Ces adresses ne reçoivent les messages qu'une fois confirmées. La confirmation par e-mail arrive avec l'étape « envoi des e-mails ».
+- **Formulaires écrits dans les thèmes** (`<form data-ili-form>`) : ils continuent de marcher, pour les sites déjà créés.
