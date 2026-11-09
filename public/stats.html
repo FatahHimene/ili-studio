@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Statistics · ili studio</title>
+  <link rel="icon" href="/_ili/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/_ili/app.css" />
+  <link rel="stylesheet" href="/_ili/shell.css" />
+  <link rel="stylesheet" href="/_ili/offers.css" />
+  <link rel="stylesheet" href="/_ili/stats.css" />
+</head>
+<body>
+  <header class="top">
+    <a class="logo" href="/"><span class="i"><span class="cur"></span>ı</span>li studio</a>
+    <nav class="tabs" id="nav"><a href="/">Sites</a><a href="/messages">Messages</a><a href="/stats" aria-current="page">Stats</a><a href="/seo" class="seo-tab"><span class="seo-ic" aria-hidden="true">↗</span>SEO</a><a href="/account">Account</a></nav>
+    <form method="post" action="/logout" style="margin-left:auto"><button class="btn btn-sm" type="submit">Sign out</button></form>
+  </header>
+  <main class="viz-root">
+    <div class="head">
+      <div><span class="label">Visitors</span><h1>Statistics</h1></div>
+      <div class="filters">
+        <label class="sr" for="site">Site</label>
+        <select class="input" id="site"></select>
+        <div class="seg" id="ranges" role="group" aria-label="Period"></div>
+      </div>
+    </div>
+
+    <div id="empty" class="emptybox" hidden></div>
+
+    <div id="body" hidden>
+      <section class="kpis" id="kpis" aria-label="Totals"></section>
+
+      <section class="card chart-card">
+        <div class="ch-head">
+          <h2 id="chartTitle">Visitors per day</h2>
+          <div class="legend" aria-hidden="true"><span><i class="sw s1"></i>Visitors</span><span><i class="sw s2"></i>Page views</span></div>
+        </div>
+        <div class="chart" id="chart"></div>
+        <details class="tbl"><summary>Show as a table</summary><div id="table"></div></details>
+      </section>
+
+      <div class="cards">
+        <section class="card"><h2 id="pagesTitle">Most viewed pages</h2><ol class="bars" id="pages"></ol></section>
+        <section class="card"><h2>Where visitors come from</h2><ol class="bars" id="sources"></ol></section>
+        <section class="card"><h2>Countries</h2><ol class="bars" id="countries"></ol></section>
+        <section class="card"><h2>Devices</h2><ol class="bars" id="devices"></ol></section>
+      </div>
+    </div>
+
+    <p class="foot muted">No cookies and no tracking script: visitors are counted anonymously by our server, and only totals are kept. A visitor is counted once per day. Country data: <a href="https://db-ip.com" target="_blank" rel="noopener">IP Geolocation by DB-IP</a>.</p>
+  </main>
+  <div class="tip" id="tip" role="status" hidden></div>
+  <div class="toast" id="toast" role="status"></div>
+  <script type="module" src="/_ili/stats.js"></script>
+</body>
+</html>

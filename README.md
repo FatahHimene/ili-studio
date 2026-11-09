@@ -206,3 +206,19 @@ STUDIO_URL=http://ili-studio:3000
 - Une version est créée automatiquement à chaque publication.
 - Nombre de versions gardées selon l'offre : Free 1, Essential 5, Plus 15, Pro 30 (`versions` dans `src/plans.js`). Les plus anciennes sont supprimées automatiquement.
 - Stockage : `sites/<id>/versions/`. Un fichier identique à celui de la version précédente est lié (hard link), pas recopié : les photos ne prennent pas de place en double.
+
+## Statistiques de visites
+
+- **Onglet Stats** (`/stats`). Pour chaque site :
+  - visiteurs, pages vues et messages reçus, comparés à la période précédente ;
+  - une courbe par jour, ou par semaine au-delà de 4 mois ;
+  - les pages les plus vues, d'où viennent les visiteurs (Google, Facebook, Yell, `?utm_source=` …), les pays et les appareils.
+- L'admin a aussi une vue « All sites » : les totaux de la plateforme et les sites les plus visités.
+- **Historique selon l'offre** (`statsDays` dans `src/plans.js`) : Free 30 jours, Essential 6 mois, Plus et Pro 2 ans.
+- **Où se fait le comptage** : là où les sites sont servis, donc sur ili-sites, ou sur ili-studio s'il n'a pas de `SITES_URL` (`src/stats.js`).
+- **Sans cookie et sans script dans les pages.**
+  - Un visiteur est compté une fois par jour, grâce à une empreinte (secret du jour + site + IP + navigateur).
+  - Le secret change chaque jour et n'est jamais enregistré. Seuls les totaux sont gardés : `DATA_DIR/stats/<siteId>/<jour>.json`, conservés environ 2 ans.
+  - Les robots et les préchargements ne sont pas comptés.
+- **Pays** : base DB-IP Lite, licence CC BY 4.0. Elle est téléchargée au démarrage puis tous les 30 jours dans `DATA_DIR/geo`, depuis jsDelivr ou unpkg (paquet `@ip-location-db/dbip-country`). La mention « IP Geolocation by DB-IP » doit rester sur la page Stats. Quand Cloudflare fournit `CF-IPCountry`, cette information est utilisée en priorité.
+- **Suppression** : supprimer un site efface aussi ses statistiques. Le dépublier les garde.

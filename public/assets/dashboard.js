@@ -51,6 +51,7 @@ async function load() {
       <div class="acts">
         <a class="btn btn-sm btn-dark" href="/editor/${s.id}">Edit</a>
         ${s.publishedAt ? `<a class="btn btn-sm" href="${esc(liveUrl(s))}" target="_blank" rel="noopener">View live ↗</a>` : ''}
+        ${s.publishedAt ? `<a class="btn btn-sm" href="/stats?site=${s.id}">Stats</a>` : ''}
         <button class="btn btn-sm btn-danger del" data-id="${s.id}" data-name="${esc(s.name)}">Delete</button>
       </div>`;
     grid.appendChild(el);

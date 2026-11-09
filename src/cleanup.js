@@ -1,6 +1,7 @@
 // Deleting things properly, and the nightly clean-up.
 // One place that knows everything a site or an account leaves behind, so nothing is forgotten:
-//   site:    DATA_DIR/sites/<id>/ (draft, published, history, messages), its copy on ili-sites, DATA_DIR/seo/audits/s-<id>.json
+//   site:    DATA_DIR/sites/<id>/ (draft, published, history, versions, messages), its copy and statistics on ili-sites,
+//            DATA_DIR/seo/audits/s-<id>.json, DATA_DIR/stats/<id>/
 //   account: all its sites, DATA_DIR/seo/external/<uid>.json + audits x-<id>.json, DATA_DIR/users/<uid>.json
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -16,7 +17,8 @@ const readJson = async (f, d) => { try { return JSON.parse(await fs.readFile(f, 
 
 /** Delete a site and everything it left behind. Throws (and keeps the site) if it cannot be taken offline. */
 export async function deleteSite(meta) {
-  if (meta.publishedAt) await removeSite(meta.subdomain || meta.slug, meta.id);
+  if (meta.publishedAt) await removeSite(meta.subdomain || meta.slug, meta.id, true);
+  await fs.rm(path.join(store.DATA_DIR, 'stats', meta.id), { recursive: true, force: true }); // when ili studio serves the sites itself
   await fs.rm(store.siteDir(meta.id), { recursive: true, force: true });
   await fs.rm(path.join(AUDITS, `s-${meta.id}.json`), { force: true });
 }

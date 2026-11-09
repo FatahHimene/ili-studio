@@ -15,6 +15,8 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { clientIp } from './clientip.js';
 import { FREE_DOMAIN } from './plans.js';
+import { createStats, top } from './stats.js';
+import { startGeo } from './geo.js';
 
 const PORT = Number(process.env.PORT || 3000);
 const DATA_DIR = path.resolve(process.env.DATA_DIR || './data');
@@ -23,6 +25,7 @@ const SECRET = process.env.SITES_SECRET || '';
 const STUDIO_URL = (process.env.STUDIO_URL || '').replace(/\/$/, '');
 const MAX_ZIP = 300 * 1024 * 1024;
 const SANDBOX = 'sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads';
+const stats = createStats(DATA_DIR);
 const SUB_RE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
 
 if (!SECRET || SECRET.length < 24) console.warn('[sites] SITES_SECRET is missing or too short: ili studio cannot publish here.');
@@ -107,12 +110,26 @@ internal.put('/sites/:sub', express.raw({ type: 'application/zip', limit: MAX_ZI
   }
 });
 
+// visitor statistics, read by ili studio (which checks who may see what)
+const daysOf = (q) => Math.min(800, Math.max(1, parseInt(q, 10) || 30));
+internal.get('/stats/:id', async (req, res) => {
+  if (!/^[a-z0-9]{10}$/.test(req.params.id)) return res.status(400).json({ error: 'Bad id' });
+  res.json(await stats.query(req.params.id, daysOf(req.query.days)));
+});
+internal.get('/stats', async (req, res) => {
+  const days = daysOf(req.query.days);
+  const sites = {};
+  for (const id of await stats.ids()) { const q = await stats.query(id, days); if (q.views) sites[id] = q; }
+  res.json({ sites });
+});
+
 internal.delete('/sites/:sub', async (req, res) => {
   const sub = req.params.sub;
   if (!SUB_RE.test(sub)) return res.status(400).json({ error: 'Bad address' });
   const m = index.get(sub);
   if (m && req.query.id && m.id !== req.query.id) return res.status(409).json({ error: 'Address used by another site' });
   index.delete(sub);
+  if (m && req.query.purge === '1') await stats.purge(m.id); // the site is deleted for good, not just taken offline
   await fs.rm(metaFile(sub), { force: true });
   await fs.rm(siteDir(sub), { recursive: true, force: true });
   console.log(`[sites] removed ${sub}`);
@@ -149,6 +166,7 @@ app.use(async (req, res, next) => {
     // pages are always fresh; images, styles and fonts are kept by the browser for a day
     res.setHeader('Cache-Control', /\.html?$/i.test(file) ? 'no-cache' : 'public, max-age=86400');
     res.setHeader('Access-Control-Allow-Origin', '*');
+    if (req.method === 'GET' && /\.html?$/i.test(file)) stats.record(site, req, path.relative(base, file), clientIp(req));
     res.sendFile(file);
   } catch (e) { next(e); }
 });
@@ -179,4 +197,5 @@ app.use((err, req, res, next) => {
 });
 
 await loadIndex();
+startGeo(DATA_DIR);
 app.listen(PORT, () => console.log(`ili-sites running on http://localhost:${PORT} (${index.size} sites, data: ${LIVE})`));

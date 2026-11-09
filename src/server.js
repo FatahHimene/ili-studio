@@ -25,7 +25,9 @@ import { PLATFORMS, cleanReviews, renderReviews, hasReviewsBlock } from './revie
 import { seoPage, seoFiles } from './seo.js';
 import { analyse, crawl, pagespeed } from './audit.js';
 import { PLANS, planOf, COSTS, FREE_DOMAIN, RESERVED } from './plans.js';
-import { remote, pushSite, removeSite, startSync, internalSecret } from './sitesync.js';
+import { remote, pushSite, removeSite, startSync, internalSecret, remoteStats } from './sitesync.js';
+import { createStats, top } from './stats.js';
+import { startGeo } from './geo.js';
 import crypto from 'node:crypto';
 import * as versions from './versions.js';
 import { deleteSite, deleteAccount, diskUsage, startCleanup } from './cleanup.js';
@@ -57,7 +59,7 @@ app.use((req, res, next) => {
   if (req.method === 'POST' && req.path === '/_form') return handleForm(sub, req, res).catch(next);
   if (req.method !== 'GET' && req.method !== 'HEAD') return res.status(405).send('Method not allowed');
   const parts = decodeURIComponent(req.path).split('/').filter(Boolean);
-  serveSite(sub, parts, res).catch(next);
+  serveSite(sub, parts, res, req).catch(next);
 });
 
 // Site content (draft in the editor, published sites) runs in an opaque origin, so its scripts
@@ -878,7 +880,7 @@ async function publishedSite(sub) {
   }
   return siteIndex.map.get(sub) || null;
 }
-async function serveSite(sub, parts, res) {
+async function serveSite(sub, parts, res, req = null) {
   const site = await publishedSite(sub);
   if (!site) return res.status(404).send('Site not found');
   const base = store.publishedDir(site.id);
@@ -890,8 +892,75 @@ async function serveSite(sub, parts, res) {
   // pages are always fresh; images, styles and fonts are kept by the browser for a day
   res.setHeader('Cache-Control', /\.html?$/i.test(file) ? 'no-cache' : 'public, max-age=86400');
   corsOk(res);
+  if (req && localStats && req.method === 'GET' && /\.html?$/i.test(file)) localStats.record(site, req, path.relative(base, file), clientIp(req));
   res.sendFile(file);
 }
+// ---- visitor statistics ---------------------------------------------------------------------------
+// Counted where the sites are served: on ili-sites, or here when ili studio serves them itself.
+const localStats = remote() ? null : createStats(store.DATA_DIR);
+if (localStats) startGeo(store.DATA_DIR);
+const statsDaysOf = (u) => (u.role === 'admin' ? 730 : planOf(u).statsDays || 30);
+const getStats = (id, days) => (localStats ? (id ? localStats.query(id, days) : allLocal(days)) : remoteStats(id, days));
+async function allLocal(days) {
+  const sites = {};
+  for (const id of await localStats.ids()) { const q = await localStats.query(id, days); if (q.views) sites[id] = q; }
+  return { sites };
+}
+/** Contact-form messages per day for the given sites (spam left out). */
+async function messagesPerDay(siteIds, from) {
+  const per = {};
+  for (const m of await listMessages(siteIds)) if (!m.spam && m.at.slice(0, 10) >= from) per[m.at.slice(0, 10)] = (per[m.at.slice(0, 10)] || 0) + 1;
+  return per;
+}
+function shape(q, msgs, days) {
+  const prevWindow = q.days.slice(0, q.days.length - days), cur = q.days.slice(-days);
+  const sum = (arr, k) => arr.reduce((n, d) => n + d[k], 0);
+  const messages = cur.reduce((n, d) => n + (msgs[d.date] || 0), 0);
+  const prevMessages = prevWindow.reduce((n, d) => n + (msgs[d.date] || 0), 0);
+  return {
+    days: cur.map((d) => ({ ...d, messages: msgs[d.date] || 0 })),
+    totals: { visitors: sum(cur, 'visitors'), views: sum(cur, 'views'), messages },
+    previous: prevWindow.length === days ? { visitors: sum(prevWindow, 'visitors'), views: sum(prevWindow, 'views'), messages: prevMessages } : null,
+    pages: top(q.pages, 10), sources: top(q.sources, 8), countries: top(q.countries, 8), devices: top(q.devices, 3),
+  };
+}
+const RANGES = [7, 30, 90, 180, 365, 730];
+app.get('/stats', requireAuth, (req, res) => send(res, 'stats.html'));
+app.get('/api/sites/:id/stats', requireAuth, wrap(async (req, res) => {
+  const meta = await siteFor(req);
+  const max = statsDaysOf(req.user);
+  const days = Math.min(max, RANGES.includes(+req.query.days) ? +req.query.days : 30);
+  const wantPrev = days * 2 <= max;
+  let q;
+  try { q = await getStats(meta.id, wantPrev ? days * 2 : days); }
+  catch (e) { console.error('[stats]', e.message); return res.status(502).json({ error: 'Statistics are not available right now. Please try again in a minute.' }); }
+  const msgs = await messagesPerDay([meta.id], q.days[0]?.date || '');
+  res.json({ ...shape(q, msgs, days), range: days, max, ranges: RANGES.filter((r) => r <= max), plan: req.user.role === 'admin' ? null : planOf(req.user).name, live: !!meta.publishedAt });
+}));
+// Admin: every site together, and which sites get the most visitors.
+app.get('/api/admin/stats', requireAdmin, wrap(async (req, res) => {
+  const days = RANGES.includes(+req.query.days) ? +req.query.days : 30;
+  let all;
+  try { all = await getStats(null, days * 2); }
+  catch (e) { console.error('[stats]', e.message); return res.status(502).json({ error: 'Statistics are not available right now.' }); }
+  const sites = await store.listSites();
+  const byId = new Map(sites.map((s) => [s.id, s]));
+  const owners = new Map((await users.list()).map((u) => [u.id, u.email]));
+  const merged = { days: [], pages: {}, sources: {}, countries: {}, devices: {} };
+  const ranking = [];
+  for (const [id, q] of Object.entries(all.sites || {})) {
+    q.days.forEach((d, i) => { const m = merged.days[i] || (merged.days[i] = { date: d.date, views: 0, visitors: 0 }); m.views += d.views; m.visitors += d.visitors; });
+    for (const k of ['sources', 'countries', 'devices']) for (const [n, c] of Object.entries(q[k])) merged[k][n] = (merged[k][n] || 0) + c;
+    const cur = q.days.slice(-days);
+    const s = byId.get(id);
+    ranking.push({ id, name: s?.name || '(deleted site)', owner: s ? owners.get(s.owner) || '' : '', address: s?.publishedAt ? `${s.subdomain || s.slug}.${FREE_DOMAIN}` : null, visitors: cur.reduce((n, d) => n + d.visitors, 0), views: cur.reduce((n, d) => n + d.views, 0) });
+  }
+  if (!merged.days.length) for (let i = days * 2 - 1; i >= 0; i--) merged.days.push({ date: new Date(Date.now() - i * 86400000).toISOString().slice(0, 10), views: 0, visitors: 0 });
+  const msgs = await messagesPerDay(sites.map((s) => s.id), merged.days[0].date);
+  ranking.sort((a, b) => b.visitors - a.visitors);
+  res.json({ ...shape(merged, msgs, days), pages: [], sites: ranking.filter((r) => r.views).slice(0, 50), range: days, max: 730, ranges: RANGES, all: true });
+}));
+
 // ---- SEO tool: audits of ili studio sites and of any public website -------------------------------
 const SEO_DIR = path.join(store.DATA_DIR, 'seo');
 const extFile = (uid) => path.join(SEO_DIR, 'external', `${uid}.json`);

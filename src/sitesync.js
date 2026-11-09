@@ -30,9 +30,14 @@ export async function pushSite(dir, sub, meta, publishedAt = meta.publishedAt) {
 }
 
 /** Take a site offline on ili-sites (only if that address still belongs to this site). */
-export async function removeSite(sub, id) {
+export async function removeSite(sub, id, purge = false) {
   if (!remote() || !sub) return;
-  await call('DELETE', '/sites/' + encodeURIComponent(sub) + (id ? '?id=' + id : ''));
+  await call('DELETE', '/sites/' + encodeURIComponent(sub) + '?' + new URLSearchParams({ ...(id ? { id } : {}), ...(purge ? { purge: '1' } : {}) }));
+}
+
+/** Visitor statistics of one site (or of all sites when id is null), from ili-sites. */
+export async function remoteStats(id, days) {
+  return call('GET', '/stats' + (id ? '/' + id : '') + '?days=' + days, { timeout: 20000 });
 }
 
 /**
