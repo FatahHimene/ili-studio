@@ -137,6 +137,19 @@ internal.delete('/sites/:sub', async (req, res) => {
 });
 app.use('/_internal', internal);
 
+// ---- Blesta webhook relay ----------------------------------------------------------------------
+// Blesta (on the reseller's server) calls https://billing.yela.uk/_blesta/<key>: yela.uk is on Cloudflare,
+// so the call always finds us. We pass it on to ili studio unchanged; ili studio checks the key.
+app.post('/_blesta/:key', express.json({ limit: '200kb' }), express.urlencoded({ extended: true, limit: '200kb' }), async (req, res) => {
+  if (!STUDIO_URL) return res.status(503).json({ error: 'not configured' });
+  try {
+    const r = await fetch(`${STUDIO_URL}/_internal/blesta/${encodeURIComponent(req.params.key)}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(req.body || {}), signal: AbortSignal.timeout(30000),
+    });
+    res.status(r.status).type('json').send(await r.text());
+  } catch (e) { console.error('[sites] blesta relay:', e.message); res.status(502).json({ error: 'studio unreachable' }); }
+});
+
 // ---- public: the websites themselves ----------------------------------------------------
 app.use(express.urlencoded({ extended: false, limit: '100kb' }));
 
