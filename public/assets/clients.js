@@ -62,3 +62,14 @@ $('#rows').addEventListener('click', async (e) => {
 
 $('#q').addEventListener('input', render);
 load();
+
+// e-mail status (SMTP) and test
+(async () => {
+  const m = await fetch('/api/admin/mail').then((r) => r.json()).catch(() => ({}));
+  $('#mailState').innerHTML = m.enabled ? `E-mail: <b>on</b> · from ${esc(m.from)}` : 'E-mail: <b>not set up</b> (add SMTP_HOST, SMTP_USER, SMTP_PASS, SMTP_FROM in Coolify)';
+})();
+$('#mailTest').onclick = async () => {
+  const r = await fetch('/api/admin/mail/test', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ to: $('#mailTo').value }) });
+  const d = await r.json().catch(() => ({}));
+  toast(r.ok && d.ok ? 'Test e-mail sent' : d.error || 'Could not send', !(r.ok && d.ok));
+};

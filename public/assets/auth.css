@@ -4,3 +4,6 @@ body { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
 .err { color: var(--danger); font-size: 14px; margin: 0; }
 .alt { margin: 0; font-size: 14px; color: var(--slate); text-align: center; }
 .alt a { color: var(--ink); font-weight: 600; }
+
+.forgot { justify-self: end; font-size: 14px; color: var(--slate); margin-top: -6px; }
+.ok { background: #F4FBDC; border: 1px solid #9bbf1f; border-radius: var(--r); padding: 10px 12px; margin: 0; font-size: 15px; }

@@ -16,11 +16,13 @@ import { wren, aiStatus, AiError, ping, askJson } from './ai.js';
 import { searchPhotos, importPhoto, saveImage, bankStatus, ImageError } from './images.js';
 import { listThemes, getTheme, publicTheme, installTheme, removeTheme, restoreTheme, copyThemeTo, applyPalette } from './themes.js';
 import { personalise, cleanBrief } from './personalise.js';
-import { requireAuth, requireAdmin, login, signup, logout, currentUser, frameToken, checkFrameToken } from './auth.js';
+import { requireAuth, requireAdmin, login, signup, logout, currentUser, frameToken, checkFrameToken, readToken, peekToken, limit, openSession } from './auth.js';
+import { sendWelcome, sendReset, sendRecipientConfirm, sendEmailChange, sendEmailChanged, pwBind } from './emails.js';
+import { mailEnabled, mailFrom, layout as mailLayout } from './mail.js';
 import * as users from './users.js';
 import { clientIp } from './clientip.js';
 import { prepareForms, receive, emailText, listMessages, updateMessage, deleteMessage, thanksPage } from './forms.js';
-import { sendMail, mailEnabled } from './mail.js';
+import { sendMail } from './mail.js';
 import { PLATFORMS, cleanReviews, renderReviews, hasReviewsBlock } from './reviews.js';
 import { MODULES, contactOf, cleanContact, keepVerified, renderModules, sectionHtml, fieldLabels, contactDefaults, adoptForms, contactFromTheme } from './modules.js';
 import { seoPage, seoFiles } from './seo.js';
@@ -101,8 +103,86 @@ app.post('/login', wrap(async (req, res) => {
   if (r.ok) return res.redirect(req.body.next === 'seo' ? '/seo' : '/');
   res.redirect('/login?error=' + encodeURIComponent(r.error) + '&email=' + encodeURIComponent(String(req.body.email || '').slice(0, 120)));
 }));
+// ---- password reset, confirming addresses -----------------------------------------------------
+const escH = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+/** A small page in the sign-in style, for the result of a link from an e-mail. */
+function notice(res, status, title, text, link = { href: '/', label: 'Open ili studio' }) {
+  res.status(status).type('html').send(`<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>${escH(title)} · ili studio</title><link rel="icon" href="/_ili/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/_ili/app.css"><link rel="stylesheet" href="/_ili/auth.css"></head>
+<body class="grid-bg"><div class="card"><span class="logo"><span class="i"><span class="cur"></span>ı</span>li studio</span><h1>${escH(title)}</h1><p>${escH(text)}</p><a class="btn btn-primary" href="${escH(link.href)}">${escH(link.label)}</a></div></body></html>`);
+}
+app.get('/forgot', (req, res) => send(res, 'forgot.html'));
+app.post('/forgot', wrap(async (req, res) => {
+  const e = users.normEmail(req.body.email);
+  // same answer whether the account exists or not, so nobody can find out who has an account
+  if (!limit('forgot:' + clientIp(req), 5, 3600000, 3600000) && !limit('forgot:' + e, 3, 3600000, 3600000)) {
+    const u = await users.byEmail(e);
+    if (u && u.role !== 'admin') await sendReset(u);
+  }
+  res.redirect('/forgot?sent=1&email=' + encodeURIComponent(e.slice(0, 120)));
+}));
+async function resetUser(t) {
+  const p = peekToken(t);
+  const u = p?.u ? await users.get(String(p.u)) : null;
+  const ok = u && readToken(t, pwBind(u));
+  return ok && ok.k === 'reset' ? u : null;
+}
+app.get('/reset', wrap(async (req, res) => {
+  if (!(await resetUser(req.query.t))) return notice(res, 400, 'This link has expired', 'Reset links work once and for 1 hour. Ask for a new one.', { href: '/forgot', label: 'Get a new link' });
+  send(res, 'reset.html');
+}));
+app.post('/reset', wrap(async (req, res) => {
+  const u = await resetUser(req.body.t);
+  if (!u) return notice(res, 400, 'This link has expired', 'Reset links work once and for 1 hour. Ask for a new one.', { href: '/forgot', label: 'Get a new link' });
+  const pw = String(req.body.password || '');
+  if (pw.length < 8 || pw.length > 200) return res.redirect('/reset?t=' + encodeURIComponent(req.body.t) + '&error=' + encodeURIComponent('Choose a password of at least 8 characters'));
+  u.password = users.hashPassword(pw); await users.save(u);
+  openSession(req, res, u.id);
+  res.redirect('/?reset=1');
+}));
+app.get('/confirm/recipient', wrap(async (req, res) => {
+  const p = readToken(req.query.t);
+  if (!p || p.k !== 'rcpt') return notice(res, 400, 'This link has expired', 'Ask the website owner to add your address again.', { href: 'https://ilidweb.uk', label: 'ilidweb.uk' });
+  const m = await store.readMeta(String(p.s)).catch(() => null);
+  const r = m?.contact?.recipients?.find((x) => x.email === p.e);
+  if (!r) return notice(res, 404, 'Nothing to confirm', 'This address is no longer on the list for this website.', { href: 'https://ilidweb.uk', label: 'ilidweb.uk' });
+  r.verified = true; await store.writeMeta(m.id, m); invalidateSites();
+  notice(res, 200, 'Address confirmed', `Messages sent through the contact form of “${m.name}” will now be copied to ${p.e}.`, { href: 'https://ilidweb.uk', label: 'ilidweb.uk' });
+}));
+app.post('/api/me/email', requireAuth, wrap(async (req, res) => {
+  if (req.user.role === 'admin') return res.status(400).json({ error: 'Not for the admin account' });
+  const next = users.normEmail(req.body.email);
+  if (!users.EMAIL_RE.test(next)) return res.status(400).json({ error: 'Enter a valid email address' });
+  if (next === req.user.email) return res.status(400).json({ error: 'This is already your address' });
+  if (!users.checkPassword(String(req.body.password || ''), req.user.password)) return res.status(403).json({ error: 'Wrong password' });
+  if (await users.byEmail(next)) return res.status(409).json({ error: 'Another account already uses this address' });
+  if (limit('email:' + req.user.id, 5, 3600000, 3600000)) return res.status(429).json({ error: 'Too many tries. Try again in an hour.' });
+  if (!mailEnabled()) return res.status(503).json({ error: 'E-mails are not set up yet. Write to hello@ilidweb.uk to change your address.' });
+  await sendEmailChange(req.user, next);
+  res.json({ ok: true });
+}));
+app.get('/confirm/email', wrap(async (req, res) => {
+  const p0 = peekToken(req.query.t);
+  const u = p0?.u ? await users.get(String(p0.u)) : null;
+  const p = u && readToken(req.query.t, u.email);
+  if (!p || p.k !== 'email') return notice(res, 400, 'This link has expired', 'Ask again from your account page.', { href: '/account', label: 'Your account' });
+  if (await users.byEmail(p.e)) return notice(res, 409, 'Address already used', 'Another account already uses this address.', { href: '/account', label: 'Your account' });
+  const old = u.email; u.email = p.e; await users.save(u);
+  sendEmailChanged(u, old);
+  notice(res, 200, 'New address confirmed', `Sign in with ${p.e} from now on.`, { href: '/account', label: 'Your account' });
+}));
+// admin: is e-mail working?
+app.get('/api/admin/mail', requireAdmin, (req, res) => res.json({ enabled: mailEnabled(), from: mailFrom() }));
+app.post('/api/admin/mail/test', requireAdmin, wrap(async (req, res) => {
+  const to = users.normEmail(req.body.to);
+  if (!users.EMAIL_RE.test(to)) return res.status(400).json({ error: 'Enter a valid email address' });
+  const m = mailLayout({ title: 'Test e-mail', paras: ['If you can read this, ili studio can send e-mails.'] });
+  try { const ok = await sendMail({ to, subject: 'ili studio test e-mail', ...m }); res.json({ ok, error: ok ? null : 'SMTP is not set up' }); }
+  catch (e) { res.status(502).json({ error: 'Sending failed: ' + e.message }); }
+}));
+
 app.post('/signup', wrap(async (req, res) => {
   const r = await signup(req, res, { email: req.body.email, password: req.body.password, name: req.body.name });
+  if (r.ok) sendWelcome(r.user);
   if (r.ok) return res.redirect(req.body.next === 'seo' ? '/seo' : '/welcome');
   res.redirect('/signup?error=' + encodeURIComponent(r.error) + '&email=' + encodeURIComponent(String(req.body.email || '').slice(0, 120)) + (req.body.next === 'seo' ? '&next=seo' : ''));
 }));
@@ -1136,6 +1216,8 @@ app.post('/api/sites/:id/contact', requireAuth, wrap(async (req, res) => {
   const meta = await siteFor(req);
   let c;
   try { c = keepVerified(cleanContact(req.body, req.user.email), meta.contact); } catch (e) { return res.status(400).json({ error: e.message }); }
+  const known = new Set((meta.contact?.recipients || []).map((r) => r.email));
+  for (const r of c.recipients) if (!r.verified && !known.has(r.email)) sendRecipientConfirm(meta, r.email, req.user);
   const m = await store.readMeta(meta.id);
   m.contact = c; m.updatedAt = new Date().toISOString(); if (m.publishedAt) m.dirty = true;
   await store.writeMeta(meta.id, m);

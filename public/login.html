@@ -16,6 +16,7 @@
     <p class="err" id="err" hidden></p>
     <label class="field"><span>Email</span><input class="input" type="text" name="email" id="email" autocomplete="username" inputmode="email" required autofocus /></label>
     <label class="field"><span>Password</span><input class="input" type="password" name="password" autocomplete="current-password" required /></label>
+    <a class="forgot" href="/forgot" id="forgot">Forgot your password?</a>
     <input type="hidden" name="next" id="next" />
     <button class="btn btn-primary" type="submit">Sign in →</button>
     <p class="alt">New to ili studio? <a href="/signup">Create your free account</a></p>
@@ -24,7 +25,7 @@
     const q = new URLSearchParams(location.search);
     if (q.get('error')) { const el = document.getElementById('err'); el.textContent = q.get('error'); el.hidden = false; }
     if (q.get('deleted')) { const el = document.getElementById('err'); el.textContent = 'Your account and all your sites have been deleted. Thank you for trying ili studio.'; el.style.cssText = 'background:#F4FBDC;color:#16181d;border-color:#9bbf1f'; el.hidden = false; }
-    if (q.get('email')) document.getElementById('email').value = q.get('email');
+    if (q.get('email')) { document.getElementById('email').value = q.get('email'); document.getElementById('forgot').href = '/forgot?email=' + encodeURIComponent(q.get('email')); }
     if (q.get('next') === 'seo') { document.getElementById('next').value = 'seo'; document.querySelector('.alt a').href = '/signup?next=seo'; }
   </script>
 </body>

@@ -261,3 +261,16 @@ STUDIO_URL=http://ili-studio:3000
   - `text` : texte seul.
 
   Chaque action (WhatsApp, Appeler, E-mail) peut aussi recevoir sa propre couleur. Le texte passe alors automatiquement en noir ou en blanc selon le fond.
+
+## E-mails
+
+- **Variables à mettre dans l'app ili-studio** (Coolify) : `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` (`ili studio <noreply@ilidweb.uk>`), `SMTP_SECURE` (`true` seulement pour le port 465), `APP_URL` (`https://studio.ilidweb.uk`).
+- **E-mails envoyés** (`src/emails.js`) :
+  - bienvenue, à l'inscription ;
+  - lien « mot de passe oublié » (1 h, utilisable une seule fois) ;
+  - confirmation d'une adresse de réception ajoutée au module Contact (7 jours) ;
+  - confirmation d'un changement d'adresse e-mail (24 h), avec un avis envoyé à l'ancienne adresse ;
+  - copie des messages des formulaires au propriétaire et aux adresses confirmées.
+- **Liens signés** avec `SESSION_SECRET`, sans base de données (`makeToken` et `readToken` dans `auth.js`). Le lien de réinitialisation est lié au mot de passe actuel : il ne marche plus une fois utilisé.
+- **« Mot de passe oublié »** donne la même réponse que le compte existe ou non. Les demandes sont limitées par IP et par adresse.
+- **Page admin Clients** : elle indique si l'envoi d'e-mails est actif et permet d'envoyer un e-mail de test.

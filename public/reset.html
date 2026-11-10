@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Choose a new password · ili studio</title>
+  <link rel="icon" href="/_ili/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/_ili/app.css" />
+  <link rel="stylesheet" href="/_ili/auth.css" />
+</head>
+<body class="grid-bg">
+  <form class="card" method="post" action="/reset">
+    <span class="logo"><span class="i"><span class="cur"></span>ı</span>li studio</span>
+    <div><span class="label">Password</span><h1>Choose a new password</h1></div>
+    <p class="err" id="err" hidden></p>
+    <label class="field"><span>New password (8 characters or more)</span><input class="input" type="password" name="password" autocomplete="new-password" minlength="8" required autofocus /></label>
+    <input type="hidden" name="t" id="t" />
+    <button class="btn btn-primary" type="submit">Save and sign in →</button>
+  </form>
+  <script>
+    const q = new URLSearchParams(location.search);
+    document.getElementById('t').value = q.get('t') || '';
+    if (q.get('error')) { const el = document.getElementById('err'); el.textContent = q.get('error'); el.hidden = false; }
+  </script>
+</body>
+</html>

@@ -116,3 +116,27 @@ export function requireAdmin(req, res, next) {
     res.redirect('/');
   });
 }
+
+/**
+ * Signed links for e-mails (password reset, confirming an address): no database needed.
+ * The payload is signed with SESSION_SECRET and expires; `bind` ties it to a value that changes once used
+ * (e.g. the current password hash), so a reset link works only once.
+ */
+export function makeToken(payload, minutes, bind = '') {
+  const body = Buffer.from(JSON.stringify({ ...payload, x: Date.now() + minutes * 60000 })).toString('base64url');
+  const sig = crypto.createHmac('sha256', SECRET).update(body + '|' + bind).digest('base64url').slice(0, 32);
+  return `${body}.${sig}`;
+}
+/** The payload of a valid, unexpired token, or null. Pass the same `bind` as when it was made. */
+export function readToken(token, bind = '') {
+  const [body, sig] = String(token || '').split('.');
+  if (!body || !sig) return null;
+  const want = crypto.createHmac('sha256', SECRET).update(body + '|' + bind).digest('base64url').slice(0, 32);
+  if (sig.length !== want.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(want))) return null;
+  try { const p = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')); return p.x > Date.now() ? p : null; } catch { return null; }
+}
+/** Peek at a token's payload without checking it (to know which user to bind to); always verify with readToken. */
+export function peekToken(token) {
+  try { return JSON.parse(Buffer.from(String(token || '').split('.')[0], 'base64url').toString('utf8')); } catch { return null; }
+}
+export { throttled as limit, startSession as openSession };

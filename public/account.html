@@ -72,7 +72,13 @@
       <div class="stack">
         <section class="box">
           <h2>Your details</h2>
-          <div class="ro"><span id="email"></span><small>To change your email address, write to us.</small></div>
+          <div class="ro"><span id="email"></span> <a href="#" id="emailEdit" class="small">Change</a></div>
+          <form class="f" id="emailForm" hidden>
+            <label class="field"><span>New email address</span><input class="input" type="email" id="newEmail" autocomplete="email" required /></label>
+            <label class="field"><span>Your password</span><input class="input" type="password" id="emailPw" autocomplete="current-password" required /></label>
+            <button class="btn btn-sm" type="submit">Send a confirmation link</button>
+            <p class="muted small" style="margin:0">We send a link to the new address. Your address changes when you click it.</p>
+          </form>
           <form class="f" id="nameForm">
             <label class="field"><span>Your name</span><input class="input" id="name" maxlength="80" autocomplete="name" /></label>
             <button class="btn btn-sm" type="submit">Save</button>
@@ -121,7 +127,7 @@
 
     if (u.role === 'admin') {
       $('#planBox').innerHTML = '<h2>Admin account</h2><p class="muted">Your password is set on the server. Clients are managed on the <a href="/clients">Clients</a> page.</p>';
-      $('#nameForm').hidden = true; $('#pwForm').closest('.box').hidden = true;
+      $('#nameForm').hidden = true; $('#emailEdit').hidden = true; $('#pwForm').closest('.box').hidden = true;
     } else {
       const live = sites.filter((s) => s.publishedAt).length;
       const meter = (label, used, max) => {
@@ -148,6 +154,13 @@
       $('#danger').hidden = false;
     }
 
+    $('#emailEdit').onclick = (e) => { e.preventDefault(); $('#emailForm').hidden = !$('#emailForm').hidden; if (!$('#emailForm').hidden) $('#newEmail').focus(); };
+    $('#emailForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const r = await send('/api/me/email', 'POST', { email: $('#newEmail').value, password: $('#emailPw').value });
+      if (r.ok) { e.target.reset(); e.target.hidden = true; toast('Check the inbox of your new address and click the link to confirm.'); }
+      else toast(r.d.error || 'Could not send the link', true);
+    };
     $('#nameForm').onsubmit = async (e) => {
       e.preventDefault();
       const r = await send('/api/me', 'PATCH', { name: $('#name').value });

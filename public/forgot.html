@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Forgot your password? · ili studio</title>
+  <link rel="icon" href="/_ili/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/_ili/app.css" />
+  <link rel="stylesheet" href="/_ili/auth.css" />
+</head>
+<body class="grid-bg">
+  <form class="card" method="post" action="/forgot" id="form">
+    <span class="logo"><span class="i"><span class="cur"></span>ı</span>li studio</span>
+    <div><span class="label">Password</span><h1>Forgot your password?</h1></div>
+    <p class="muted" id="intro">Enter the email address of your account. We will send you a link to choose a new password.</p>
+    <p class="ok" id="sent" hidden></p>
+    <label class="field" id="emailField"><span>Email</span><input class="input" type="email" name="email" id="email" autocomplete="username" required autofocus /></label>
+    <button class="btn btn-primary" type="submit" id="btn">Send me a link →</button>
+    <p class="alt"><a href="/login">Back to sign in</a></p>
+  </form>
+  <script>
+    const q = new URLSearchParams(location.search);
+    if (q.get('email')) document.getElementById('email').value = q.get('email');
+    if (q.get('sent')) {
+      const s = document.getElementById('sent');
+      s.textContent = 'If an account exists for ' + (q.get('email') || 'this address') + ', we have sent it a link. Check your inbox and your spam folder. The link works for 1 hour.';
+      s.hidden = false;
+      document.getElementById('intro').hidden = true;
+      document.getElementById('btn').textContent = 'Send the link again';
+    }
+  </script>
+</body>
+</html>
