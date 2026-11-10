@@ -274,3 +274,19 @@ STUDIO_URL=http://ili-studio:3000
 - **Liens signés** avec `SESSION_SECRET`, sans base de données (`makeToken` et `readToken` dans `auth.js`). Le lien de réinitialisation est lié au mot de passe actuel : il ne marche plus une fois utilisé.
 - **« Mot de passe oublié »** donne la même réponse que le compte existe ou non. Les demandes sont limitées par IP et par adresse.
 - **Page admin Clients** : elle indique si l'envoi d'e-mails est actif et permet d'envoyer un e-mail de test.
+
+## Paiement (Blesta)
+
+- **Prix facturés une fois par an**, sans prélèvement automatique : Essential 39 £, Plus 69 £, Pro 119 £. Ils sont affichés au mois : 3,25 £, 5,75 £ et 9,92 £. Le domaine est inclus tant que l'offre est active.
+- **Parcours client**
+  1. Le client choisit une offre.
+  2. ili studio crée son compte client Blesta (même e-mail, sans e-mail Blesta), un service en attente et la facture.
+  3. Le client est envoyé sur la page de paiement, déjà connecté (plugin **Shared Login**).
+  4. Il paie par PayPal ou par carte.
+  5. Le plugin **Webhooks** de Blesta appelle `POST /_internal/blesta/<BLESTA_WEBHOOK_KEY>`.
+  6. ili studio relit les services du client par l'API et active l'offre et les crédits IA. Le contenu du webhook n'est jamais pris pour argent comptant.
+- **Vérifications de secours** : au retour du client (`/api/me`) et toutes les 6 h.
+- **Si aucune offre n'est active** (suspendue ou annulée), le compte repasse en Free. Rien n'est supprimé.
+- **« Mon compte »** : liens « My invoices » et « Support tickets » (`/billing/invoices`, `/billing/support`), qui ouvrent Blesta déjà connecté.
+- **Variables Coolify** (app ili-studio) : `BLESTA_URL`, `BLESTA_API_USER`, `BLESTA_API_KEY`, `BLESTA_SHARED_KEY`, `BLESTA_PACKAGES=essential:25,plus:26,pro:27`, `BLESTA_WEBHOOK_KEY`.
+- **Si Blesta n'est pas configuré**, le choix d'offre est seulement enregistré, comme avant.

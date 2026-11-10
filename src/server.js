@@ -33,6 +33,7 @@ import { createStats, top } from './stats.js';
 import { startGeo } from './geo.js';
 import crypto from 'node:crypto';
 import * as versions from './versions.js';
+import { billingEnabled, checkout, blestaLink, ensureClient, syncUser, onWebhook, startBillingSync, WEBHOOK_KEY } from './billing.js';
 import { deleteSite, deleteAccount, diskUsage, startCleanup } from './cleanup.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -190,7 +191,12 @@ app.post('/logout', (req, res) => { logout(res); res.redirect('/login'); });
 
 // ---- account, plans and credits --------------------------------------------------------
 app.get('/api/plans', (req, res) => res.json({ plans: PLANS, freeDomain: FREE_DOMAIN, costs: COSTS }));
-app.get('/api/me', requireAuth, (req, res) => res.json({ ...users.publicUser(req.user), planInfo: planOf(req.user) }));
+app.get('/api/me', requireAuth, wrap(async (req, res) => {
+  const u = req.user;
+  // back from the payment page: check Blesta now rather than waiting for the webhook (at most every 20 s)
+  if (u.blesta?.pending && billingEnabled() && Date.now() - (u._checkedAt || 0) > 20000) { u._checkedAt = Date.now(); await syncUser(u).catch(() => {}); }
+  res.json({ ...users.publicUser(u), planInfo: planOf(u), billing: billingEnabled(), paying: !!u.blesta?.pending });
+}));
 // ---- the client's own account: see it, delete it -----------------------------------------
 app.get('/account', requireAuth, (req, res) => send(res, 'account.html'));
 app.patch('/api/me', requireAuth, wrap(async (req, res) => {
@@ -270,7 +276,29 @@ app.post('/api/me/choice', requireAuth, wrap(async (req, res) => {
   u.planChosen = true;
   if (plan.id !== 'free') u.wantsPlan = plan.id;
   await users.save(u);
+  // paid plan and Blesta is set up: straight to the payment page, already signed in
+  if (plan.id !== 'free' && billingEnabled() && u.role !== 'admin') {
+    try { return res.json({ ...users.publicUser(u), payments: true, ...(await checkout(u, plan.id)) }); }
+    catch (e) { console.error(`[billing] checkout ${u.id}:`, e.message); }
+  }
   res.json({ ...users.publicUser(u), payments: false });
+}));
+
+// ---- Blesta: invoices, support, webhook -------------------------------------------------------
+const BLESTA_PAGES = { invoices: '/client/invoices/', support: '/client/plugin/support_manager/client_tickets/', services: '/client/services/' };
+app.get('/billing/:page', requireAuth, wrap(async (req, res) => {
+  const path = BLESTA_PAGES[req.params.page];
+  if (!path || req.user.role === 'admin') return res.redirect('/account');
+  if (!billingEnabled()) return res.redirect(req.params.page === 'support' ? 'mailto:hello@ilidweb.uk' : '/account');
+  try { await ensureClient(req.user); res.redirect(blestaLink(req.user, path)); }
+  catch (e) { console.error(`[billing] ${req.params.page} ${req.user.id}:`, e.message); res.redirect('/account?billing=down'); }
+}));
+// Blesta's Webhooks plugin calls this when an invoice is paid or a service changes. The key in the URL is the only secret.
+app.post('/_internal/blesta/:key', wrap(async (req, res) => {
+  const got = Buffer.from(String(req.params.key)), want = Buffer.from(WEBHOOK_KEY);
+  if (WEBHOOK_KEY.length < 24 || got.length !== want.length || !crypto.timingSafeEqual(got, want)) return res.status(404).send('Not found');
+  const n = await onWebhook(req.body || {});
+  res.json({ ok: true, checked: n });
 }));
 app.get('/welcome', requireAuth, (req, res) => send(res, 'welcome.html'));
 
@@ -1372,4 +1400,5 @@ app.use((err, req, res, next) => {
 await store.init();
 startSync();
 startCleanup();
+startBillingSync();
 app.listen(PORT, () => console.log(`ili studio running on http://localhost:${PORT} (data: ${store.DATA_DIR})`));

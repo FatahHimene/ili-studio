@@ -25,6 +25,7 @@ export async function renderOffers(el, opts = {}) {
       ${p.featured ? '<span class="ribbon">Most chosen</span>' : ''}
       <h3>${esc(p.name)}</h3>
       <p class="price"><b>${money(p.price)}</b>${p.price ? '<span>/ month</span>' : '<span>for good</span>'}</p>
+      ${p.yearly ? `<p class="yearly">Billed ${money(p.yearly)} once a year</p>` : ''}
       <p class="sum">${esc(p.summary)}</p>
       <ul>${p.features.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
       <button class="btn ${p.price ? (p.featured ? 'btn-primary' : 'btn-dark') : ''}" type="button" data-plan="${p.id}" ${opts.current === p.id ? 'disabled' : ''}>
@@ -44,7 +45,10 @@ export async function renderOffers(el, opts = {}) {
 export async function choosePlan(plan) {
   const r = await fetch('/api/me/choice', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plan }) });
   if (!r.ok) throw new Error('Could not save your choice');
-  return r.json();
+  const d = await r.json();
+  // card / PayPal payment is on: go to the payment page (the promise never resolves, the page changes)
+  if (d.url) { location.href = d.url; return new Promise(() => {}); }
+  return d;
 }
 
 /** A ready-made modal with the offers (used in the editor). Returns a promise resolved when it closes. */

@@ -65,3 +65,4 @@
 .pub .sscore { font: 700 26px/1 var(--display); }
 .pub .sscore small { font: 400 11px var(--mono); color: var(--slate); }
 .pub .seobox.good .sscore { color: #2E7D32; } .pub .seobox.mid .sscore { color: #B26A00; } .pub .seobox.bad .sscore { color: var(--danger); }
+.ocard .yearly, .yearly { margin: -6px 0 6px; font-size: 13px; color: var(--slate); }
