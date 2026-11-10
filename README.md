@@ -326,3 +326,11 @@ Réglages (ili-studio) :
 - Le compte Internet.bs doit avoir du crédit : c'est lui qui paie l'enregistrement.
 
 Le transfert de domaine viendra plus tard. On attend de savoir si le registrar change.
+
+### Statistiques et vie privée
+
+Les statistiques des sites clients n'utilisent aucun cookie : une empreinte anonyme est calculée et renouvelée chaque jour, et seul le propriétaire du site voit les chiffres. Au Royaume-Uni, depuis le 5 février 2026, l'exception « statistical purposes » (Data (Use and Access) Act 2025) permet ces statistiques sans bandeau, à condition d'informer les visiteurs et de leur offrir un moyen simple de refuser.
+
+Le refus est automatique : une visite n'est pas comptée si le navigateur envoie `Sec-GPC: 1` (Global Privacy Control) ou `DNT: 1`.
+
+À prévoir : un module « Mentions légales ». Ce sera une seule page par site, préremplie (identité, confidentialité, cookies et statistiques, contact, et les modules utilisés), que le client peut compléter, avec un lien ajouté automatiquement en bas du site.

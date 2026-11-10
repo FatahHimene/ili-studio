@@ -257,7 +257,9 @@ app.use(async (req, res, next) => {
     // pages are always fresh; images, styles and fonts are kept by the browser for a day
     res.setHeader('Cache-Control', /\.html?$/i.test(file) ? 'no-cache' : 'public, max-age=86400');
     res.setHeader('Access-Control-Allow-Origin', '*');
-    if (req.method === 'GET' && /\.html?$/i.test(file)) stats.record(site, req, path.relative(base, file), clientIp(req));
+    // visitors whose browser says "do not track me" (Global Privacy Control or Do Not Track) are not counted
+    const optOut = req.get('sec-gpc') === '1' || req.get('dnt') === '1';
+    if (req.method === 'GET' && !optOut && /\.html?$/i.test(file)) stats.record(site, req, path.relative(base, file), clientIp(req));
     if (site.badge && /\.html?$/i.test(file)) return res.type('html').send(injectBadge(await fs.readFile(file, 'utf8'), site.sub));
     res.sendFile(file);
   } catch (e) { next(e); }
