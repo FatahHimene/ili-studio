@@ -73,6 +73,8 @@ async function init() {
   setStatus();
   loadFrame();
   waitPersonalising();
+  // coming from the domain window: open the publish window straight away
+  if (new URLSearchParams(location.search).get('publish') === '1') { history.replaceState(null, '', location.pathname); setTimeout(() => openPublish(), 400); }
 }
 
 // ---- saving edits --------------------------------------------------------------------
@@ -409,7 +411,7 @@ $('#siteName').onchange = async (e) => {
   try { const d = await api('', { method: 'PATCH', body: JSON.stringify({ name }) }); state.meta.name = d.name; document.title = `${d.name} · ili studio`; } catch (err) { toast(esc(err.message), true); }
 };
 $('#publish').onclick = () => openPublish();
-$('#domBtn').onclick = async () => { const { openDomain } = await import('/_ili/domain.js'); openDomain(id, { onChange: (d) => { state.meta.domain = d.domain; setStatus(); } }); };
+$('#domBtn').onclick = async () => { const { openDomain } = await import('/_ili/domain.js'); openDomain(id, { inEditor: true, onPublish: () => openPublish(), onChange: (d) => { state.meta.domain = d.domain; if (d.justPublished) { state.meta.publishedAt = d.justPublished.publishedAt; state.meta.dirty = false; } setStatus(); } }); };
 async function openPublish() {
   flushStyle?.();
   let a, seo = null;
@@ -424,6 +426,7 @@ async function openPublish() {
       <span class="label">${plan && !plan.customDomain ? 'Your free address' : 'Your address'}</span>
       <div class="addr"><span>https://</span><input class="input" id="pubSub" value="${esc(a.sub)}" maxlength="40" autocomplete="off" spellcheck="false" aria-label="Address"><span>.${esc(a.freeDomain)}</span></div>
       <p class="amsg" id="pubMsg" aria-live="polite"></p>
+      ${state.meta.domain?.status === 'live' ? `<p class="muted">Your site opens on <b>${esc(state.meta.domain.name)}</b>. This free address sends visitors there.</p>` : ''}
       ${a.locked.length ? `<p class="lock">Your ${esc(plan?.name || '')} plan publishes ${a.live.length === 1 ? 'one page' : a.live.length + ' pages'}: <b>${a.live.map(pageLabel).map(esc).join(', ')}</b>. Your page${a.locked.length > 1 ? 's' : ''} <b>${a.locked.map(pageLabel).map(esc).join(', ')}</b> ${a.locked.length > 1 ? 'are' : 'is'} ready and will go live as soon as you choose a plan.</p>` : ''}
       ${seo ? `<div class="seobox ${seo.score >= 80 ? 'good' : seo.score >= 50 ? 'mid' : 'bad'}"><b class="sscore">${seo.score}<small>/100</small></b>
         <div><b>SEO score</b><p>${seo.counts.error + seo.counts.warning ? `${seo.counts.error + seo.counts.warning} thing${seo.counts.error + seo.counts.warning > 1 ? 's' : ''} to improve before Google sees your site${seo.top.length ? ': ' + seo.top.slice(0, 2).map(esc).join(', ').toLowerCase() : ''}.` : 'Your site is ready for Google.'}</p></div>

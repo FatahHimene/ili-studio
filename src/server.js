@@ -920,7 +920,7 @@ const domainAllowed = (u) => u.role === 'admin' || !!planOf(u).customDomain;
 async function domainInfo(meta, user, dnsNow = null) {
   const d = meta.domain || null;
   return {
-    domain: d, allowed: domainAllowed(user), url: siteUrl(meta), published: !!meta.publishedAt,
+    domain: d, allowed: domainAllowed(user), url: siteUrl(meta), published: !!meta.publishedAt, dirty: !!meta.dirty,
     records: d ? dnsRecords(d.name) : [], dns: dnsNow, ip: SITES_IPS[0] || null,
   };
 }
