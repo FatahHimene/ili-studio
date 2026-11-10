@@ -26,8 +26,15 @@ export function cleanDomainInput(input) {
   return d;
 }
 
+// Ask public resolvers, like visitors do, instead of the VPS's own resolver, which can keep an old answer
+// (or an old error) for a while after the client fixes their DNS. The system resolver is the last resort.
+const PUBLIC_DNS = String(process.env.DNS_SERVERS || '1.1.1.1,8.8.8.8').split(',').map((s) => s.trim()).filter(Boolean);
+const resolvers = PUBLIC_DNS.map((ip) => { const r = new dns.Resolver({ timeout: 4000, tries: 2 }); r.setServers([ip]); return r; });
 async function addresses(name) {
-  try { return await dns.resolve4(name); } catch { return []; }
+  for (const r of [...resolvers, dns]) {
+    try { const ips = await r.resolve4(name); if (ips.length) return ips; } catch { /* next */ }
+  }
+  return [];
 }
 
 /** Where the domain and its www point today. */
