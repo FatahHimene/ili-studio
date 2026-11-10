@@ -71,7 +71,7 @@ app.use((req, res, next) => {
 
 // Site content (draft in the editor, published sites) runs in an opaque origin, so its scripts
 // can never reach the admin API or cookies.
-const SANDBOX = 'sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads';
+const SANDBOX = 'sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads';
 // Sandboxed pages have an opaque origin, so fonts and fetches to their own files need CORS.
 const corsOk = (res) => res.setHeader('Access-Control-Allow-Origin', '*');
 

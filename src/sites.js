@@ -31,7 +31,7 @@ const LIVE = path.join(DATA_DIR, 'live');
 const SECRET = process.env.SITES_SECRET || '';
 const STUDIO_URL = (process.env.STUDIO_URL || '').replace(/\/$/, '');
 const MAX_ZIP = 300 * 1024 * 1024;
-const SANDBOX = 'sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads';
+const SANDBOX = 'sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads';
 const stats = createStats(DATA_DIR);
 const SUB_RE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
 const DOMAIN_RE = /^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/;
