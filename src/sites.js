@@ -5,7 +5,8 @@
 // Because everything arrives by push, this server can later run on another VPS: only SITES_URL changes in ili studio.
 //
 // Storage:  DATA_DIR/live/<sub>/...      files of the site
-//           DATA_DIR/live/<sub>.json     { id, sub, name, publishedAt, thanks, domain }
+//           DATA_DIR/live/<sub>.json     { id, sub, name, publishedAt, thanks, domain, badge }
+// badge: true for free plans: every page served gets the "Website made with Ilidweb" bar (see badge.js).
 //
 // Own domains: a site can also answer on the client's domain (and its www). When TRAEFIK_DIR is set
 // (Coolify's proxy/dynamic folder, mounted in this container), we write ili-domains.yaml there so
@@ -22,6 +23,7 @@ import { clientIp } from './clientip.js';
 import { FREE_DOMAIN } from './plans.js';
 import { createStats, top } from './stats.js';
 import { startGeo } from './geo.js';
+import { injectBadge } from './badge.js';
 
 const PORT = Number(process.env.PORT || 3000);
 const DATA_DIR = path.resolve(process.env.DATA_DIR || './data');
@@ -113,7 +115,16 @@ app.get('/healthz', (req, res) => res.json({ ok: true, sites: index.size }));
 const internal = express.Router();
 internal.use((req, res, next) => (authorised(req) ? next() : res.status(404).send('Not found')));
 
-internal.get('/sites', (req, res) => res.json({ sites: [...index.values()].map(({ id, sub, publishedAt, domain }) => ({ id, sub, publishedAt, domain: domain || null })) }));
+internal.get('/sites', (req, res) => res.json({ sites: [...index.values()].map(({ id, sub, publishedAt, domain, badge }) => ({ id, sub, publishedAt, domain: domain || null, badge: !!badge })) }));
+
+// the owner's plan changed: show or hide the free bar, without publishing again
+internal.put('/badge/:sub', express.json({ limit: '10kb' }), async (req, res) => {
+  const m = index.get(req.params.sub);
+  if (!m || m.id !== req.body?.id) return res.status(404).json({ error: 'Site not found' });
+  m.badge = !!req.body.badge;
+  await writeMeta(m);
+  res.json({ ok: true });
+});
 
 // put an own domain on a published site, or take it off (domain: null), without publishing again
 internal.put('/domains/:sub', express.json({ limit: '10kb' }), async (req, res) => {
@@ -155,7 +166,7 @@ internal.put('/sites/:sub', express.raw({ type: 'application/zip', limit: MAX_ZI
     await fs.mkdir(tmp, { recursive: true });
     let domain = info.domain === undefined ? owner?.domain || null : cleanDomain(info.domain);
     if (domain && hosts.has(domain) && hosts.get(domain) !== sub) domain = null; // already on another site
-    const meta = { id: info.id, sub, name: String(info.name || '').slice(0, 120), publishedAt: String(info.publishedAt || new Date().toISOString()), thanks: fss.existsSync(path.join(tmp, 'thanks.html')), domain };
+    const meta = { id: info.id, sub, name: String(info.name || '').slice(0, 120), publishedAt: String(info.publishedAt || new Date().toISOString()), thanks: fss.existsSync(path.join(tmp, 'thanks.html')), domain, badge: info.badge === undefined ? !!owner?.badge : !!info.badge };
     const old = siteDir(sub) + '.old-' + crypto.randomBytes(3).toString('hex');
     if (fss.existsSync(siteDir(sub))) await fs.rename(siteDir(sub), old);
     await fs.rename(tmp, siteDir(sub));
@@ -247,6 +258,7 @@ app.use(async (req, res, next) => {
     res.setHeader('Cache-Control', /\.html?$/i.test(file) ? 'no-cache' : 'public, max-age=86400');
     res.setHeader('Access-Control-Allow-Origin', '*');
     if (req.method === 'GET' && /\.html?$/i.test(file)) stats.record(site, req, path.relative(base, file), clientIp(req));
+    if (site.badge && /\.html?$/i.test(file)) return res.type('html').send(injectBadge(await fs.readFile(file, 'utf8'), site.sub));
     res.sendFile(file);
   } catch (e) { next(e); }
 });

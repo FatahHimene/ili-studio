@@ -28,7 +28,8 @@ import { MODULES, contactOf, cleanContact, keepVerified, renderModules, sectionH
 import { seoPage, seoFiles } from './seo.js';
 import { analyse, crawl, pagespeed } from './audit.js';
 import { PLANS, planOf, COSTS, FREE_DOMAIN, RESERVED } from './plans.js';
-import { remote, pushSite, removeSite, startSync, internalSecret, remoteStats, liveDomain, setRemoteDomain } from './sitesync.js';
+import { remote, pushSite, removeSite, startSync, internalSecret, remoteStats, liveDomain, setRemoteDomain, setRemoteBadge } from './sitesync.js';
+import { injectBadge } from './badge.js';
 import { cleanDomainInput, checkDns, dnsRecords, startDomainCheck, SITES_IPS, CNAME_TARGET } from './domains.js';
 import { createStats, top } from './stats.js';
 import { startGeo } from './geo.js';
@@ -196,7 +197,7 @@ app.get('/api/plans', (req, res) => res.json({ plans: PLANS, freeDomain: FREE_DO
 app.get('/api/me', requireAuth, wrap(async (req, res) => {
   const u = req.user;
   // back from the payment page: check Blesta now rather than waiting for the webhook (at most every 20 s)
-  if (u.blesta?.pending && billingEnabled() && Date.now() - (u._checkedAt || 0) > 20000) { u._checkedAt = Date.now(); await syncUser(u).catch(() => {}); }
+  if (u.blesta?.pending && billingEnabled() && Date.now() - (u._checkedAt || 0) > 20000) { u._checkedAt = Date.now(); await syncUser(u).catch(() => {}); refreshBadges([u.id]).catch(() => {}); }
   res.json({ ...users.publicUser(u), planInfo: planOf(u), billing: billingEnabled(), paying: !!u.blesta?.pending });
 }));
 // ---- the client's own account: see it, delete it -----------------------------------------
@@ -257,6 +258,7 @@ app.patch('/api/admin/clients/:id', requireAdmin, wrap(async (req, res) => {
     u.credits = n;
   }
   await users.save(u);
+  if (req.body.plan !== undefined) refreshBadges([u.id]).catch(() => {});
   res.json({ ok: true });
 }));
 app.delete('/api/admin/clients/:id', requireAdmin, wrap(async (req, res) => {
@@ -300,6 +302,7 @@ app.post('/_internal/blesta/:key', wrap(async (req, res) => {
   const got = Buffer.from(String(req.params.key)), want = Buffer.from(WEBHOOK_KEY);
   if (WEBHOOK_KEY.length < 24 || got.length !== want.length || !crypto.timingSafeEqual(got, want)) return res.status(404).send('Not found');
   const n = await onWebhook(req.body || {});
+  refreshBadges().catch(() => {});
   res.json({ ok: true, checked: n });
 }));
 app.get('/welcome', requireAuth, (req, res) => send(res, 'welcome.html'));
@@ -866,6 +869,7 @@ app.post('/api/sites/:id/publish', requireAuth, wrap(async (req, res) => {
   }
   const { live, locked } = publishable(meta, req.user);
   const ui = await uiOf(meta);
+  meta.badge = await badgeFor(meta);
   const seo = [];
   const src = store.draftDir(meta.id);
   const tmp = store.publishedDir(meta.id) + '.tmp';
@@ -877,7 +881,7 @@ app.post('/api/sites/:id/publish', requireAuth, wrap(async (req, res) => {
     let html = strip(renderModules(await fs.readFile(f, 'utf8'), { contact: contactOf(meta), ui }));
     if (locked.length) html = unlinkPages(html, page, locked);
     html = prepareForms(html);
-    if (req.user.role !== 'admin' && planOf(req.user).id === 'free') html = addBadge(html, sub);
+    if (!remote() && meta.badge) html = injectBadge(html, sub); // ili-sites adds it itself when serving
     const s = seoPage(html, { site: meta, base: siteUrl(meta, sub), page });
     if (typeof s === 'object') { html = s.html; seo.push(s); }
     await fs.writeFile(f, html);
@@ -962,6 +966,7 @@ async function refreshDomain(meta, owner, { notify = true } = {}) {
   return check;
 }
 startDomainCheck(async () => {
+  await refreshBadges();
   for (const s of await store.listSites()) {
     if (!s.domain || (s.domain.status === 'live' && (!s.domain.registered || s.domain.dnsSet) && domainAllowed(await users.get(s.owner) || { role: 'admin' }))) continue;
     const meta = await store.readMeta(s.id).catch(() => null);
@@ -1094,13 +1099,23 @@ app.get('/api/sites/:id/download', requireAuth, wrap(async (req, res) => {
   res.attachment(zipName(meta)).type('application/zip').send(await versions.zipFolder(store.draftDir(meta.id)));
 }));
 
-/** Free sites carry a small "Made with ili studio by Ilidweb" bar at the very bottom (removed on paid plans). */
-function addBadge(html, sub) {
-  const badge = `<div id="ili-badge" style="all:initial;display:block;background:#0D1221;text-align:center;padding:10px 16px;font:500 13px/1.4 system-ui,-apple-system,'Segoe UI',sans-serif">`
-    + `<a href="https://ilidweb.uk/ili-studio/?utm_source=free-site&amp;utm_medium=badge&amp;utm_campaign=${encodeURIComponent(sub)}" target="_blank" rel="noopener" `
-    + `style="all:initial;cursor:pointer;color:#F6F7F9;font:500 13px/1.4 system-ui,-apple-system,'Segoe UI',sans-serif;text-decoration:none">`
-    + `Website made with <b style="all:initial;color:#C8F031;font:700 13px/1.4 system-ui,-apple-system,'Segoe UI',sans-serif">ili studio</b> by Ilidweb · Create yours for free →</a></div>`;
-  return /<\/body>/i.test(html) ? html.replace(/<\/body>(?![\s\S]*<\/body>)/i, badge + '</body>') : html + badge;
+/** Free sites carry the small "Website made with Ilidweb" bar (badge.js): it depends on the owner's plan, not on who publishes. */
+async function badgeFor(meta) {
+  const owner = meta.owner ? await users.get(meta.owner) : null;
+  return !!owner && owner.role !== 'admin' && planOf(owner).id === 'free';
+}
+/** Show or hide the bar on every published site of these owners (all owners when none given). Runs after a plan change and every 10 minutes. */
+async function refreshBadges(ownerIds = null) {
+  for (const s2 of await store.listSites()) {
+    if (!s2.publishedAt || (ownerIds && !ownerIds.includes(s2.owner))) continue;
+    const want = await badgeFor(s2);
+    if (!!s2.badge === want) continue;
+    const meta = await store.readMeta(s2.id).catch(() => null);
+    if (!meta) continue;
+    meta.badge = want;
+    try { await setRemoteBadge(meta); await store.writeMeta(meta.id, meta); console.log(`[badge] ${meta.id}: ${want ? 'shown' : 'hidden'}`); }
+    catch (e) { console.error(`[badge] ${meta.id}:`, e.message); }
+  }
 }
 
 /** Remove links to pages that are not published (their menu entries disappear instead of leading to a 404). */
