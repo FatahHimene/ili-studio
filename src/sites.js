@@ -5,7 +5,12 @@
 // Because everything arrives by push, this server can later run on another VPS: only SITES_URL changes in ili studio.
 //
 // Storage:  DATA_DIR/live/<sub>/...      files of the site
-//           DATA_DIR/live/<sub>.json     { id, sub, name, publishedAt, thanks }
+//           DATA_DIR/live/<sub>.json     { id, sub, name, publishedAt, thanks, domain }
+//
+// Own domains: a site can also answer on the client's domain (and its www). When TRAEFIK_DIR is set
+// (Coolify's proxy/dynamic folder, mounted in this container), we write ili-domains.yaml there so
+// Traefik routes those domains here and gets their HTTPS certificates. ili studio only sends a domain
+// once its DNS points to us, so Let's Encrypt never fails on it.
 import express from 'express';
 import compression from 'compression';
 import AdmZip from 'adm-zip';
@@ -27,6 +32,10 @@ const MAX_ZIP = 300 * 1024 * 1024;
 const SANDBOX = 'sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads';
 const stats = createStats(DATA_DIR);
 const SUB_RE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
+const DOMAIN_RE = /^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/;
+const TRAEFIK_DIR = process.env.TRAEFIK_DIR || '';
+const TRAEFIK_TARGET = process.env.TRAEFIK_TARGET || 'http://ili-sites:3000';
+const cleanDomain = (d) => { d = String(d || '').toLowerCase().trim(); return DOMAIN_RE.test(d) && !d.endsWith('.' + FREE_DOMAIN) && d !== FREE_DOMAIN ? d : null; };
 
 if (!SECRET || SECRET.length < 24) console.warn('[sites] SITES_SECRET is missing or too short: ili studio cannot publish here.');
 if (!STUDIO_URL) console.warn('[sites] STUDIO_URL is missing: contact forms cannot be delivered.');
@@ -39,8 +48,9 @@ const safeJoin = (base, rel) => {
 const siteDir = (sub) => path.join(LIVE, sub);
 const metaFile = (sub) => path.join(LIVE, sub + '.json');
 
-// published sites by address, in memory
+// published sites by address, in memory; own domains → address
 const index = new Map();
+const hosts = new Map();
 async function loadIndex() {
   await fs.mkdir(LIVE, { recursive: true });
   index.clear();
@@ -48,6 +58,41 @@ async function loadIndex() {
     if (!f.endsWith('.json')) continue;
     try { const m = JSON.parse(await fs.readFile(path.join(LIVE, f), 'utf8')); if (SUB_RE.test(m.sub)) index.set(m.sub, m); } catch { /* skip */ }
   }
+  await domainsChanged();
+}
+
+async function writeMeta(meta) {
+  await fs.writeFile(metaFile(meta.sub) + '.tmp', JSON.stringify(meta));
+  await fs.rename(metaFile(meta.sub) + '.tmp', metaFile(meta.sub));
+}
+
+/** Rebuild the domain → address map and Traefik's routes for the own domains. */
+let lastRoutes = null;
+async function domainsChanged() {
+  hosts.clear();
+  for (const m of index.values()) if (m.domain && !hosts.has(m.domain)) hosts.set(m.domain, m.sub);
+  if (!TRAEFIK_DIR) return;
+  const names = [...hosts.keys()].sort();
+  const q = (d) => '`' + d + '`';
+  let yaml = '# Written by ili-sites: own domains of client websites. Do not edit, it is rewritten.\n';
+  if (names.length) {
+    yaml += 'http:\n  routers:\n';
+    for (const d of names) {
+      const key = 'ili-d-' + crypto.createHash('sha1').update(d).digest('hex').slice(0, 12);
+      const rule = `Host(${q(d)}) || Host(${q('www.' + d)})`;
+      yaml += `    ${key}:\n      rule: "${rule}"\n      entryPoints: [https]\n      service: ili-domains\n      tls:\n        certResolver: letsencrypt\n`;
+      yaml += `    ${key}-http:\n      rule: "${rule}"\n      entryPoints: [http]\n      middlewares: [ili-to-https]\n      service: ili-domains\n`;
+    }
+    yaml += `  middlewares:\n    ili-to-https:\n      redirectScheme:\n        scheme: https\n        permanent: true\n  services:\n    ili-domains:\n      loadBalancer:\n        servers:\n          - url: "${TRAEFIK_TARGET}"\n`;
+  }
+  if (yaml === lastRoutes) return;
+  try {
+    const file = path.join(TRAEFIK_DIR, 'ili-domains.yaml');
+    if (!names.length) await fs.rm(file, { force: true });
+    else { await fs.writeFile(file + '.tmp', yaml); await fs.rename(file + '.tmp', file); }
+    lastRoutes = yaml;
+    console.log(`[sites] Traefik routes: ${names.length} own domain${names.length === 1 ? '' : 's'}`);
+  } catch (e) { console.error('[sites] could not write Traefik routes:', e.message); }
 }
 
 function authorised(req) {
@@ -68,7 +113,22 @@ app.get('/healthz', (req, res) => res.json({ ok: true, sites: index.size }));
 const internal = express.Router();
 internal.use((req, res, next) => (authorised(req) ? next() : res.status(404).send('Not found')));
 
-internal.get('/sites', (req, res) => res.json({ sites: [...index.values()].map(({ id, sub, publishedAt }) => ({ id, sub, publishedAt })) }));
+internal.get('/sites', (req, res) => res.json({ sites: [...index.values()].map(({ id, sub, publishedAt, domain }) => ({ id, sub, publishedAt, domain: domain || null })) }));
+
+// put an own domain on a published site, or take it off (domain: null), without publishing again
+internal.put('/domains/:sub', express.json({ limit: '10kb' }), async (req, res) => {
+  const m = index.get(req.params.sub);
+  if (!m || m.id !== req.body?.id) return res.status(404).json({ error: 'Site not found' });
+  const domain = req.body.domain ? cleanDomain(req.body.domain) : null;
+  if (req.body.domain && !domain) return res.status(400).json({ error: 'Bad domain' });
+  const other = domain && hosts.get(domain);
+  if (other && other !== m.sub) return res.status(409).json({ error: 'Domain used by another site' });
+  m.domain = domain;
+  await writeMeta(m);
+  await domainsChanged();
+  console.log(`[sites] ${m.sub}: domain ${domain || 'removed'}`);
+  res.json({ ok: true });
+});
 
 internal.put('/sites/:sub', express.raw({ type: 'application/zip', limit: MAX_ZIP }), async (req, res) => {
   const sub = req.params.sub;
@@ -93,13 +153,15 @@ internal.put('/sites/:sub', express.raw({ type: 'application/zip', limit: MAX_ZI
       await fs.writeFile(dest, e.getData());
     }
     await fs.mkdir(tmp, { recursive: true });
-    const meta = { id: info.id, sub, name: String(info.name || '').slice(0, 120), publishedAt: String(info.publishedAt || new Date().toISOString()), thanks: fss.existsSync(path.join(tmp, 'thanks.html')) };
+    let domain = info.domain === undefined ? owner?.domain || null : cleanDomain(info.domain);
+    if (domain && hosts.has(domain) && hosts.get(domain) !== sub) domain = null; // already on another site
+    const meta = { id: info.id, sub, name: String(info.name || '').slice(0, 120), publishedAt: String(info.publishedAt || new Date().toISOString()), thanks: fss.existsSync(path.join(tmp, 'thanks.html')), domain };
     const old = siteDir(sub) + '.old-' + crypto.randomBytes(3).toString('hex');
     if (fss.existsSync(siteDir(sub))) await fs.rename(siteDir(sub), old);
     await fs.rename(tmp, siteDir(sub));
-    await fs.writeFile(metaFile(sub) + '.tmp', JSON.stringify(meta));
-    await fs.rename(metaFile(sub) + '.tmp', metaFile(sub));
+    await writeMeta(meta);
     index.set(sub, meta);
+    if ((owner?.domain || null) !== domain) await domainsChanged();
     await fs.rm(old, { recursive: true, force: true });
     console.log(`[sites] published ${sub} (${info.id})`);
     res.json({ ok: true });
@@ -132,6 +194,7 @@ internal.delete('/sites/:sub', async (req, res) => {
   if (m && req.query.purge === '1') await stats.purge(m.id); // the site is deleted for good, not just taken offline
   await fs.rm(metaFile(sub), { force: true });
   await fs.rm(siteDir(sub), { recursive: true, force: true });
+  if (m?.domain) await domainsChanged();
   console.log(`[sites] removed ${sub}`);
   res.json({ ok: true });
 });
@@ -156,13 +219,17 @@ app.use(express.urlencoded({ extended: false, limit: '100kb' }));
 function subOf(req) {
   const host = String(req.hostname || '').toLowerCase();
   if (host.endsWith('.' + FREE_DOMAIN)) return host.slice(0, -FREE_DOMAIN.length - 1);
-  return null;
+  return hosts.get(host) || null;
 }
 
 app.use(async (req, res, next) => {
   try {
     const host = String(req.hostname || '').toLowerCase();
     if (host === FREE_DOMAIN || host === 'www.' + FREE_DOMAIN) return res.redirect(302, 'https://ilidweb.uk/ili-studio/');
+    // www.<own domain> → <own domain>; the free address → the own domain once it is live
+    if (host.startsWith('www.') && hosts.has(host.slice(4))) return res.redirect(301, `https://${host.slice(4)}${req.originalUrl}`);
+    const free = host.endsWith('.' + FREE_DOMAIN) ? index.get(host.slice(0, -FREE_DOMAIN.length - 1)) : null;
+    if (free?.domain && (req.method === 'GET' || req.method === 'HEAD')) return res.redirect(301, `https://${free.domain}${req.originalUrl}`);
     const sub = subOf(req);
     if (!sub) return res.status(404).send('Site not found');
     const site = index.get(sub);

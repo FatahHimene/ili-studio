@@ -66,3 +66,29 @@
 .pub .sscore small { font: 400 11px var(--mono); color: var(--slate); }
 .pub .seobox.good .sscore { color: #2E7D32; } .pub .seobox.mid .sscore { color: #B26A00; } .pub .seobox.bad .sscore { color: var(--danger); }
 .ocard .yearly, .yearly { margin: -6px 0 6px; font-size: 13px; color: var(--slate); }
+
+/* own domain dialog */
+.osheet.dom { max-width: 720px; }
+.dom .dbox { background: var(--white); border: 1px solid var(--ink); border-radius: var(--r2); padding: 20px; display: grid; gap: 12px; }
+.dom .dbox h3 { margin: 0; }
+.dom .row { display: flex; gap: 8px; flex-wrap: wrap; }
+.dom .addr { display: flex; align-items: center; gap: 6px; font: 500 15px var(--mono); }
+.dom .addr .input { flex: 1; font: inherit; }
+.dom .amsg { margin: 0; font-size: 13px; color: var(--slate); min-height: 1.4em; }
+.dom .amsg.bad { color: var(--danger); }
+.dchoices { display: grid; gap: 10px; }
+.dchoice { text-align: left; background: var(--white); border: 1px solid var(--ink); border-radius: var(--r2); padding: 16px 18px; display: grid; gap: 4px; cursor: pointer; font: inherit; color: var(--ink); position: relative; }
+.dchoice:hover, .dchoice:focus-visible { box-shadow: 4px 4px 0 var(--signal); }
+.dchoice span { color: var(--slate); font-size: 14px; }
+.dchoice .tag { position: absolute; top: 12px; right: 12px; font-style: normal; }
+.dhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dname { font: 600 18px var(--mono); }
+.dstat { font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 99px; background: var(--grid); }
+.dstat.ok { background: var(--signal); color: var(--ink); }
+.dstat.wait { background: #FFF1C2; }
+.drec { width: 100%; border-collapse: collapse; font-size: 14px; }
+.drec th, .drec td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--grid); vertical-align: middle; }
+.drec code { font: 500 14px var(--mono); }
+.dok { color: var(--signal-deep); font-weight: 600; }
+.dno { color: var(--slate); }
+.nudge { display: flex; align-items: center; gap: 14px; justify-content: space-between; flex-wrap: wrap; background: var(--white); border: 1px solid var(--ink); border-radius: var(--r2); box-shadow: 6px 6px 0 var(--signal); padding: 14px 18px; margin-bottom: 18px; }

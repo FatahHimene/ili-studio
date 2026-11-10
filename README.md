@@ -290,3 +290,21 @@ STUDIO_URL=http://ili-studio:3000
 - **« Mon compte »** : liens « My invoices » et « Support tickets » (`/billing/invoices`, `/billing/support`), qui ouvrent Blesta déjà connecté.
 - **Variables Coolify** (app ili-studio) : `BLESTA_URL`, `BLESTA_API_USER`, `BLESTA_API_KEY`, `BLESTA_SHARED_KEY`, `BLESTA_PACKAGES=essential:25,plus:26,pro:27`, `BLESTA_WEBHOOK_KEY`.
 - **Si Blesta n'est pas configuré**, le choix d'offre est seulement enregistré, comme avant.
+
+## Domaine du client (offres payantes)
+
+Le client met son site sur son propre domaine depuis le bouton **Domain** (éditeur) ou **Add domain** (tableau de bord). Un bandeau l'y invite quand son offre payante n'a encore aucun domaine.
+
+Trois choix : *Get a new domain, free* et *Move my domain to you* (en préparation, via Blesta), et *Connect my domain*, qui fonctionne :
+
+1. Le client tape son domaine. ili studio affiche deux enregistrements : `A @ → SITES_IP` et `CNAME www → connect.yela.uk`.
+2. ili studio vérifie le DNS (bouton *Check now*, et toutes les 10 minutes). Il faut que le domaine **et** `www` pointent vers `SITES_IP`.
+3. Dès que c'est bon : statut `live`, ili-sites répond sur le domaine, `www` et l'adresse gratuite redirigent vers lui, et un e-mail prévient le client.
+4. ili-sites écrit `ili-domains.yaml` dans le dossier dynamique de Traefik : Traefik obtient alors le certificat HTTPS (Let's Encrypt, défi HTTP).
+
+Si l'offre redevient gratuite, le domaine passe en `paused` et le site revient sur son adresse gratuite.
+
+Réglages :
+- ili-studio : `SITES_IP` = adresse IP publique du VPS (plusieurs séparées par des virgules) ; `SITES_CNAME` (par défaut `connect.yela.uk`).
+- ili-sites : volume `/data/coolify/proxy/dynamic` (hôte) → `/traefik` (conteneur), et `TRAEFIK_DIR=/traefik`. `TRAEFIK_TARGET` (par défaut `http://ili-sites:3000`).
+- Cloudflare : `connect.yela.uk` en `A` vers l'IP du VPS, **proxy désactivé (nuage gris)**.

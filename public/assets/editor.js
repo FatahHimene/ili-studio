@@ -19,7 +19,7 @@ function setStatus() {
   else if (m.dirty) { s.textContent = 'Saved'; s.className = 'status dirty'; s.title = 'Your changes are saved but visitors still see the published version. Click Publish changes to put them online.'; }
   else { s.textContent = 'Saved · live'; s.className = 'status ok'; s.title = 'Visitors see exactly what you see here.'; }
   const live = $('#live');
-  live.hidden = !m.publishedAt; live.href = liveUrl(m.subdomain || m.slug);
+  live.hidden = !m.publishedAt; live.href = m.domain?.status === 'live' && !testHost ? `https://${m.domain.name}/` : liveUrl(m.subdomain || m.slug);
   const pub = $('#publish');
   pub.textContent = m.publishedAt && m.dirty ? 'Publish changes' : 'Publish';
   pub.classList.toggle('changes', !!(m.publishedAt && m.dirty));
@@ -409,6 +409,7 @@ $('#siteName').onchange = async (e) => {
   try { const d = await api('', { method: 'PATCH', body: JSON.stringify({ name }) }); state.meta.name = d.name; document.title = `${d.name} · ili studio`; } catch (err) { toast(esc(err.message), true); }
 };
 $('#publish').onclick = () => openPublish();
+$('#domBtn').onclick = async () => { const { openDomain } = await import('/_ili/domain.js'); openDomain(id, { onChange: (d) => { state.meta.domain = d.domain; setStatus(); } }); };
 async function openPublish() {
   flushStyle?.();
   let a, seo = null;

@@ -25,8 +25,17 @@ export async function pushSite(dir, sub, meta, publishedAt = meta.publishedAt) {
   if (!remote()) return;
   const zip = new AdmZip();
   zip.addLocalFolder(dir);
-  const info = Buffer.from(JSON.stringify({ id: meta.id, name: meta.name, publishedAt })).toString('base64');
+  const info = Buffer.from(JSON.stringify({ id: meta.id, name: meta.name, publishedAt, domain: liveDomain(meta) })).toString('base64');
   await call('PUT', '/sites/' + encodeURIComponent(sub), { body: zip.toBuffer(), headers: { 'content-type': 'application/zip', 'x-ili-site': info }, timeout: 180000 });
+}
+
+/** The own domain a site answers on, once its DNS is ready (null otherwise). */
+export const liveDomain = (meta) => (meta.domain?.status === 'live' ? meta.domain.name : null);
+
+/** Put the own domain on a published site at ili-sites, or take it off. */
+export async function setRemoteDomain(meta) {
+  if (!remote() || !meta.publishedAt) return;
+  await call('PUT', '/domains/' + encodeURIComponent(meta.subdomain || meta.slug), { body: JSON.stringify({ id: meta.id, domain: liveDomain(meta) }), headers: { 'content-type': 'application/json' }, timeout: 20000 });
 }
 
 /** Take a site offline on ili-sites (only if that address still belongs to this site). */
@@ -55,6 +64,8 @@ export async function syncSites() {
       const t = there.get(sub);
       if (!t || t.id !== s.id || t.publishedAt !== s.publishedAt) {
         try { await pushSite(store.publishedDir(s.id), sub, s); pushed++; } catch (e) { console.error(`[sync] ${sub}:`, e.message); }
+      } else if ((t.domain || null) !== liveDomain(s)) {
+        try { await setRemoteDomain(s); pushed++; } catch (e) { console.error(`[sync] domain ${sub}:`, e.message); }
       }
       there.delete(sub);
     }

@@ -61,3 +61,14 @@ export function sendEmailChanged(u, old) {
   });
   return sendQuiet({ to: old, subject: 'Your ili studio e-mail address was changed', replyTo: 'hello@ilidweb.uk', ...m }, `email changed notice ${u.id}`);
 }
+
+export function sendDomainLive(u, site, domain) {
+  const m = layout({
+    title: 'Your domain is live',
+    paras: [hi(u), `Good news: “${site.name}” now opens on ${domain}, with a secure HTTPS address. Your old free address sends visitors there automatically.`,
+      'It can take a few minutes more for the secure certificate to appear everywhere.'],
+    button: { label: `Open ${domain}`, url: `https://${domain}/` },
+    after: ['Any question? Just reply to this e-mail.'],
+  });
+  return sendQuiet({ to: u.email, subject: `${domain} is live`, replyTo: 'hello@ilidweb.uk', ...m }, `domain live to ${u.id}`);
+}

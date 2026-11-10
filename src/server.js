@@ -17,7 +17,7 @@ import { searchPhotos, importPhoto, saveImage, bankStatus, ImageError } from './
 import { listThemes, getTheme, publicTheme, installTheme, removeTheme, restoreTheme, copyThemeTo, applyPalette } from './themes.js';
 import { personalise, cleanBrief } from './personalise.js';
 import { requireAuth, requireAdmin, login, signup, logout, currentUser, frameToken, checkFrameToken, readToken, peekToken, limit, openSession } from './auth.js';
-import { sendWelcome, sendReset, sendRecipientConfirm, sendEmailChange, sendEmailChanged, pwBind } from './emails.js';
+import { sendWelcome, sendReset, sendRecipientConfirm, sendEmailChange, sendEmailChanged, sendDomainLive, pwBind } from './emails.js';
 import { mailEnabled, mailFrom, layout as mailLayout } from './mail.js';
 import * as users from './users.js';
 import { clientIp } from './clientip.js';
@@ -28,7 +28,8 @@ import { MODULES, contactOf, cleanContact, keepVerified, renderModules, sectionH
 import { seoPage, seoFiles } from './seo.js';
 import { analyse, crawl, pagespeed } from './audit.js';
 import { PLANS, planOf, COSTS, FREE_DOMAIN, RESERVED } from './plans.js';
-import { remote, pushSite, removeSite, startSync, internalSecret, remoteStats } from './sitesync.js';
+import { remote, pushSite, removeSite, startSync, internalSecret, remoteStats, liveDomain, setRemoteDomain } from './sitesync.js';
+import { cleanDomainInput, checkDns, dnsRecords, startDomainCheck, SITES_IPS } from './domains.js';
 import { createStats, top } from './stats.js';
 import { startGeo } from './geo.js';
 import crypto from 'node:crypto';
@@ -832,6 +833,8 @@ async function addressProblem(sub, siteId) {
   return taken ? 'This address is already taken. Try another one.' : null;
 }
 const freeUrl = (sub) => `https://${sub}.${FREE_DOMAIN}/`;
+/** The address visitors use: the own domain once it is live, otherwise the free address. */
+const siteUrl = (meta, sub = meta.subdomain || meta.slug) => (liveDomain(meta) ? `https://${liveDomain(meta)}/` : freeUrl(sub));
 
 /** Which pages a plan publishes: the home page first, then the others in order, up to the plan limit. */
 function publishable(meta, user) {
@@ -874,11 +877,11 @@ app.post('/api/sites/:id/publish', requireAuth, wrap(async (req, res) => {
     if (locked.length) html = unlinkPages(html, page, locked);
     html = prepareForms(html);
     if (req.user.role !== 'admin' && planOf(req.user).id === 'free') html = addBadge(html, sub);
-    const s = seoPage(html, { site: meta, base: freeUrl(sub), page });
+    const s = seoPage(html, { site: meta, base: siteUrl(meta, sub), page });
     if (typeof s === 'object') { html = s.html; seo.push(s); }
     await fs.writeFile(f, html);
   }
-  await seoFiles(tmp, freeUrl(sub), seo);
+  await seoFiles(tmp, siteUrl(meta, sub), seo);
   const publishedAt = new Date().toISOString();
   const oldSub = meta.publishedAt ? meta.subdomain || meta.slug : null;
   try { await pushSite(tmp, sub, meta, publishedAt); }
@@ -895,7 +898,7 @@ app.post('/api/sites/:id/publish', requireAuth, wrap(async (req, res) => {
   await store.writeMeta(meta.id, meta);
   invalidateSites();
   await versions.create(meta, { kind: 'publish', label: '', keep: keepVersions(req.user) }).catch((e) => console.error(`[versions] ${meta.id}:`, e.message));
-  res.json({ ok: true, url: freeUrl(sub), preview: `/s/${sub}/`, publishedAt: meta.publishedAt, live, locked });
+  res.json({ ok: true, url: siteUrl(meta, sub), preview: `/s/${sub}/`, publishedAt: meta.publishedAt, live, locked });
 }));
 
 app.post('/api/sites/:id/unpublish', requireAuth, wrap(async (req, res) => {
@@ -909,6 +912,90 @@ app.post('/api/sites/:id/unpublish', requireAuth, wrap(async (req, res) => {
   await store.writeMeta(meta.id, meta);
   invalidateSites();
   res.json({ ok: true });
+}));
+
+// ---- own domain (paid plans) -----------------------------------------------------------------
+// The client points their domain to us (A + www), we check the DNS, and once it is right the site answers on it.
+const domainAllowed = (u) => u.role === 'admin' || !!planOf(u).customDomain;
+async function domainInfo(meta, user, dnsNow = null) {
+  const d = meta.domain || null;
+  return {
+    domain: d, allowed: domainAllowed(user), url: siteUrl(meta), published: !!meta.publishedAt,
+    records: d ? dnsRecords(d.name) : [], dns: dnsNow, ip: SITES_IPS[0] || null,
+  };
+}
+/** Look at the DNS of one site's domain and switch it live (or back) when needed. Saves the meta. */
+async function refreshDomain(meta, owner, { notify = true } = {}) {
+  const d = meta.domain;
+  if (!d) return null;
+  const was = d.status;
+  let check = null;
+  if (owner && !domainAllowed(owner)) d.status = 'paused';
+  else {
+    check = await checkDns(d.name);
+    d.checkedAt = new Date().toISOString();
+    if (check.ok) { d.status = 'live'; d.error = null; }
+    else if (d.status !== 'live') { d.status = 'pending'; d.error = !check.apexOk ? 'domain' : 'www'; }
+    // a live domain whose DNS moved away stays live: we never take a site offline because of a DNS hiccup
+  }
+  if (d.status !== was) {
+    try { await setRemoteDomain(meta); }
+    catch (e) { console.error(`[domains] ${d.name}:`, e.message); d.status = was; return check; }
+    if (d.status === 'live') { d.liveAt = new Date().toISOString(); if (notify && owner) sendDomainLive(owner, meta, d.name); }
+    if (meta.publishedAt) meta.dirty = true; // links for Google (canonical, sitemap) use the new address at the next publish
+    console.log(`[domains] ${d.name} (${meta.id}): ${was} → ${d.status}`);
+  }
+  await store.writeMeta(meta.id, meta);
+  invalidateSites();
+  return check;
+}
+startDomainCheck(async () => {
+  for (const s of await store.listSites()) {
+    if (!s.domain || (s.domain.status === 'live' && domainAllowed(await users.get(s.owner) || { role: 'admin' }))) continue;
+    const meta = await store.readMeta(s.id).catch(() => null);
+    if (meta?.domain) await refreshDomain(meta, await users.get(meta.owner));
+  }
+});
+
+app.get('/api/sites/:id/domain', requireAuth, wrap(async (req, res) => {
+  const meta = await siteFor(req);
+  res.json(await domainInfo(meta, req.user, meta.domain ? await checkDns(meta.domain.name) : null));
+}));
+app.post('/api/sites/:id/domain', requireAuth, wrap(async (req, res) => {
+  const meta = await siteFor(req);
+  if (!domainAllowed(req.user)) return res.status(403).json({ error: 'Your own domain comes with every paid plan.', code: 'plan' });
+  const name = cleanDomainInput(req.body.domain);
+  if (!name) return res.status(400).json({ error: 'This does not look like a domain name. Type it like yourbusiness.co.uk' });
+  const taken = (await store.listSites()).find((s) => s.id !== meta.id && s.domain?.name === name);
+  if (taken) return res.status(409).json({ error: 'This domain is already used by another website.' });
+  if (meta.domain?.name !== name) {
+    if (liveDomain(meta)) { meta.domain.status = 'pending'; await setRemoteDomain(meta).catch(() => {}); }
+    meta.domain = { name, status: 'pending', addedAt: new Date().toISOString(), checkedAt: null, error: null };
+  }
+  const check = await refreshDomain(meta, req.user);
+  res.json(await domainInfo(meta, req.user, check));
+}));
+app.post('/api/sites/:id/domain/check', requireAuth, wrap(async (req, res) => {
+  if (limit('dns:' + req.user.id, 30, 600000, 600000)) return res.status(429).json({ error: 'Too many checks. Try again in a few minutes.' });
+  const meta = await siteFor(req);
+  if (!meta.domain) return res.status(404).json({ error: 'No domain on this site' });
+  const check = await refreshDomain(meta, req.user);
+  res.json(await domainInfo(meta, req.user, check));
+}));
+app.delete('/api/sites/:id/domain', requireAuth, wrap(async (req, res) => {
+  const meta = await siteFor(req);
+  if (meta.domain) {
+    const had = liveDomain(meta);
+    meta.domain = null;
+    if (had) {
+      if (meta.publishedAt) meta.dirty = true;
+      try { await setRemoteDomain(meta); }
+      catch (e) { console.error('[domains] remove:', e.message); return res.status(502).json({ error: 'Could not remove the domain right now. Please try again in a minute.' }); }
+    }
+    await store.writeMeta(meta.id, meta);
+    invalidateSites();
+  }
+  res.json(await domainInfo(meta, req.user));
 }));
 
 // ---- versions: go back to an earlier state, download the site --------------------------------

@@ -18,7 +18,7 @@ const ago = (iso) => {
 // ---- account ---------------------------------------------------------------------------
 const me = {};
 let sites = [];
-const liveUrl = (s) => (s.subdomain && me.freeDomain && !/^(localhost|\d+\.\d+\.\d+\.\d+)/.test(location.hostname) && !location.hostname.endsWith('nip.io') ? `https://${s.subdomain}.${me.freeDomain}/` : `/s/${s.subdomain || s.slug}/`);
+const liveUrl = (s) => (s.domain?.status === 'live' ? `https://${s.domain.name}/` : s.subdomain && me.freeDomain && !/^(localhost|\d+\.\d+\.\d+\.\d+)/.test(location.hostname) && !location.hostname.endsWith('nip.io') ? `https://${s.subdomain}.${me.freeDomain}/` : `/s/${s.subdomain || s.slug}/`);
 async function loadMe() {
   const [u, p] = await Promise.all([fetch('/api/me').then((r) => r.json()), fetch('/api/plans').then((r) => r.json())]);
   Object.assign(me, u, { freeDomain: p.freeDomain });
@@ -47,19 +47,35 @@ async function load() {
       <a class="thumb" href="/editor/${s.id}" aria-label="Edit ${esc(s.name)}"><iframe loading="lazy" sandbox="allow-scripts" tabindex="-1" title="" scrolling="no"></iframe></a>
       <div class="meta"><h3>${esc(s.name)}</h3>
         <div class="facts">${status}<span>${s.pages.length} page${s.pages.length > 1 ? 's' : ''}</span>${origin}<span>· edited ${ago(s.updatedAt)}</span>${s.unread ? `<a class="tag tag-live" href="/messages">${s.unread} new message${s.unread > 1 ? 's' : ''}</a>` : ''}${s.ownerEmail !== undefined ? `<span>· ${esc(s.ownerEmail || 'you')}</span>` : ''}</div>
-        ${s.publishedAt && s.subdomain ? `<div class="facts"><span class="mono">${esc(s.subdomain)}.${esc(me.freeDomain || '')}</span></div>` : ''}</div>
+        ${s.domain?.status === 'live' ? `<div class="facts"><span class="mono">${esc(s.domain.name)}</span></div>` : s.publishedAt && s.subdomain ? `<div class="facts"><span class="mono">${esc(s.subdomain)}.${esc(me.freeDomain || '')}</span>${s.domain?.status === 'pending' ? `<span class="tag tag-warn">${esc(s.domain.name)}: waiting for DNS</span>` : ''}</div>` : ''}</div>
       <div class="acts">
         <a class="btn btn-sm btn-dark" href="/editor/${s.id}">Edit</a>
         ${s.publishedAt ? `<a class="btn btn-sm" href="${esc(liveUrl(s))}" target="_blank" rel="noopener">View live ↗</a>` : ''}
         ${s.publishedAt ? `<a class="btn btn-sm" href="/stats?site=${s.id}">Stats</a>` : ''}
+        ${me.role !== 'admin' && me.planInfo?.customDomain || me.role === 'admin' ? `<button class="btn btn-sm dom" type="button" data-id="${s.id}">${s.domain ? 'Domain' : 'Add domain'}</button>` : ''}
         <button class="btn btn-sm btn-danger del" data-id="${s.id}" data-name="${esc(s.name)}">Delete</button>
       </div>`;
     grid.appendChild(el);
     fetch(`/api/sites/${s.id}`).then((r2) => r2.json()).then((d) => { el.querySelector('iframe').src = `/frame/${s.id}/${d.frameToken}/index.html?ili-thumb=1`; });
   }
+  domainNudge();
 }
 
+/** Paid plan, but no site on its own domain yet: invite the client to set up the domain that comes with the plan. */
+function domainNudge() {
+  document.getElementById('domNudge')?.remove();
+  if (me.role === 'admin' || !me.planInfo?.customDomain || !sites.length || sites.some((s) => s.domain)) return;
+  const n = document.createElement('div');
+  n.id = 'domNudge'; n.className = 'nudge';
+  n.innerHTML = `<div><b>Your plan includes your own domain.</b> Get a new one free, move yours to us, or connect the one you have.</div><button class="btn btn-primary btn-sm" type="button">Set up my domain →</button>`;
+  n.querySelector('button').onclick = () => openDom((sites.find((s) => s.publishedAt) || sites[0]).id);
+  grid.before(n);
+}
+async function openDom(id) { const { openDomain } = await import('/_ili/domain.js'); openDomain(id, { onChange: load }); }
+
 grid.addEventListener('click', async (e) => {
+  const dm = e.target.closest('.dom');
+  if (dm) return openDom(dm.dataset.id);
   const b = e.target.closest('.del');
   if (!b) return;
   if (b.dataset.confirm !== '1') { b.dataset.confirm = '1'; b.textContent = 'Click again to delete'; setTimeout(() => { b.dataset.confirm = ''; b.textContent = 'Delete'; }, 3000); return; }
