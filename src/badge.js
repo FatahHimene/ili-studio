@@ -5,9 +5,9 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 const FONT = "500 13px/1.4 system-ui,-apple-system,'Segoe UI',sans-serif";
 
 export function badgeHtml(sub) {
-  const href = `https://ilidweb.uk/ili-studio/?utm_source=free-site&amp;utm_medium=badge&amp;utm_campaign=${esc(encodeURIComponent(sub))}`;
+  const href = 'https://ilidweb.uk/ili-studio/';
   return `<div id="ili-badge" style="all:initial;display:block;background:#0D1221;text-align:center;padding:10px 16px;font:${FONT}">`
-    + `<a href="${href}" target="_blank" rel="noopener" style="all:initial;cursor:pointer;color:#F6F7F9;font:${FONT};text-decoration:none">`
+    + `<a href="${href}" style="all:initial;cursor:pointer;color:#F6F7F9;font:${FONT};text-decoration:none">`
     + `Website made with <b style="all:initial;color:#C8F031;font:700 13px/1.4 system-ui,-apple-system,'Segoe UI',sans-serif">Ilidweb</b> · Create yours for free →</a></div>`;
 }
 
