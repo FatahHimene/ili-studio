@@ -66,17 +66,39 @@ function mockResults(q) {
 /** Only fetch photo files from the photo library's own servers. */
 const ALLOWED_HOSTS = /(^|\.)pixabay\.com$/i;
 
+// Pixabay answers 429 when too many photo files are downloaded close together (a site made from a theme
+// downloads ten or more at once). So downloads wait in one queue, a little apart, and a 429 is retried after
+// the delay Pixabay asks for (Retry-After), or 2 s, 5 s, 10 s.
+const GAP_MS = Number(process.env.PHOTO_GAP_MS || 600);
+let queue = Promise.resolve();
+let lastAt = 0;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+function inQueue(job) {
+  const run = queue.then(async () => { const wait = lastAt + GAP_MS - Date.now(); if (wait > 0) await sleep(wait); try { return await job(); } finally { lastAt = Date.now(); } });
+  queue = run.catch(() => {});
+  return run;
+}
+
 async function fetchBytes(src) {
   if (String(src).startsWith('mock:')) {
     return sharp({ create: { width: 1280, height: 853, channels: 3, background: src.slice(5) } }).jpeg().toBuffer();
   }
   let u; try { u = new URL(src); } catch { throw new ImageError('Bad image address'); }
   if (u.protocol !== 'https:' || !ALLOWED_HOSTS.test(u.hostname)) throw new ImageError('This image source is not allowed');
-  const r = await fetch(u, { signal: AbortSignal.timeout(30000) });
-  if (!r.ok) throw new ImageError(`Could not download the photo (${r.status})`);
-  const len = Number(r.headers.get('content-length') || 0);
-  if (len > 25 * 1024 * 1024) throw new ImageError('Photo too large');
-  return Buffer.from(await r.arrayBuffer());
+  const delays = [2000, 5000, 10000];
+  for (let attempt = 0; ; attempt++) {
+    const r = await inQueue(() => fetch(u, { signal: AbortSignal.timeout(30000) }));
+    if (r.status === 429 && attempt < delays.length) {
+      const after = Number(r.headers.get('retry-after')) * 1000;
+      await r.body?.cancel().catch(() => {});
+      await sleep(Math.min(Number.isFinite(after) && after > 0 ? after : delays[attempt], 30000));
+      continue;
+    }
+    if (!r.ok) throw new ImageError(`Could not download the photo (${r.status})`);
+    const len = Number(r.headers.get('content-length') || 0);
+    if (len > 25 * 1024 * 1024) throw new ImageError('Photo too large');
+    return Buffer.from(await r.arrayBuffer());
+  }
 }
 
 /**
@@ -102,6 +124,13 @@ export async function saveImage(buffer, destDir, { maxWidth = 2000, keepFormat =
 
 /** Download a photo from the library and store it in the site. */
 export async function importPhoto(photo, destDir) {
-  const buf = await fetchBytes(photo.full || photo.preview);
+  let buf;
+  try { buf = await fetchBytes(photo.full || photo.preview); }
+  catch (e) {
+    // the large file keeps failing: the 640 px version is better than no photo
+    if (!photo.full || !photo.preview || photo.full === photo.preview) throw e;
+    console.warn('[images] large photo failed, using the smaller one:', e.message);
+    buf = await fetchBytes(photo.preview);
+  }
   return saveImage(buf, destDir);
 }
