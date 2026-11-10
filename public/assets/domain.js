@@ -39,7 +39,7 @@ export async function openDomain(siteId, { onChange, onPublish, inEditor = false
     const reg = info.register || {};
     const freeCard = reg.used
       ? `<button class="dchoice" type="button" data-way="mine"><b>Use my free domain: ${esc(reg.used)}</b><span>The domain that came with your plan. Put it on this site in one click.</span></button>`
-      : `<button class="dchoice" type="button" data-way="new"><b>Get a new domain, free</b><span>Find a name ending in ${esc((reg.tlds || ['.co.uk']).join(', '))}. We register it in your name, free while your plan is active.</span>${reg.ready ? '' : '<em class="tag">Opening soon</em>'}</button>`;
+      : `<button class="dchoice" type="button" data-way="new"><b>Get a new domain, free</b><span>Find a name ending in ${esc((reg.tlds || ['.co.uk']).join(', '))}. We register it in your name, free while your plan is active.</span>${reg.ready ? '' : `<em class="tag">${reg.admin ? 'Clients only' : 'Opening soon'}</em>`}</button>`;
     body.innerHTML = `<p class="muted">Your plan includes a domain. How would you like to set it up?</p>
       <div class="dchoices">
         ${freeCard}
@@ -121,7 +121,7 @@ export async function openDomain(siteId, { onChange, onPublish, inEditor = false
 
   function soon(way) {
     body.innerHTML = `<section class="dbox"><h3>${way === 'new' ? 'Get a new domain, free' : 'Move my domain to you'}</h3>
-      <p class="muted">${way === 'new' ? 'This opens very soon.' : 'Transfers open later.'} If you are in a hurry, send us a message from <a href="/billing/support">Support</a> and we will help you.</p>
+      <p class="muted">${way === 'new' && info.register?.admin ? 'The free domain is registered in the client\'s name, from their own account (paid plan). As admin, register domains in Blesta.' : way === 'new' ? 'This opens very soon.' : 'Transfers open later.'} If you are in a hurry, send us a message from <a href="/billing/support">Support</a> and we will help you.</p>
       <p class="muted">If you already own your domain, you can connect it now: your site goes live on it today.</p>
       <div class="row"><button class="btn" type="button" data-back>← Back</button><button class="btn btn-primary" type="button" data-connect>Connect my domain</button></div></section>`;
     body.querySelector('[data-back]').onclick = choose;

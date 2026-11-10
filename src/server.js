@@ -932,7 +932,7 @@ async function domainInfo(meta, user, dnsNow = null) {
   return {
     domain: d, allowed: domainAllowed(user), url: siteUrl(meta), published: !!meta.publishedAt, dirty: !!meta.dirty,
     records: d ? dnsRecords(d.name) : [], dns: dnsNow, ip: SITES_IPS[0] || null,
-    register: { ready: canRegister(user), tlds: [...FREE_TLDS].sort((a, b) => ['.co.uk', '.uk', '.org.uk'].indexOf(a) - ['.co.uk', '.uk', '.org.uk'].indexOf(b)), used: user.freeDomain?.name || null, name: user.name || '' },
+    register: { ready: canRegister(user), admin: user.role === 'admin', tlds: [...FREE_TLDS].sort((a, b) => ['.co.uk', '.uk', '.org.uk'].indexOf(a) - ['.co.uk', '.uk', '.org.uk'].indexOf(b)), used: user.freeDomain?.name || null, name: user.name || '' },
   };
 }
 /** Look at the DNS of one site's domain and switch it live (or back) when needed. Saves the meta. */
