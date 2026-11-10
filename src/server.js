@@ -29,12 +29,13 @@ import { seoPage, seoFiles } from './seo.js';
 import { analyse, crawl, pagespeed } from './audit.js';
 import { PLANS, planOf, COSTS, FREE_DOMAIN, RESERVED } from './plans.js';
 import { remote, pushSite, removeSite, startSync, internalSecret, remoteStats, liveDomain, setRemoteDomain } from './sitesync.js';
-import { cleanDomainInput, checkDns, dnsRecords, startDomainCheck, SITES_IPS } from './domains.js';
+import { cleanDomainInput, checkDns, dnsRecords, startDomainCheck, SITES_IPS, CNAME_TARGET } from './domains.js';
 import { createStats, top } from './stats.js';
 import { startGeo } from './geo.js';
 import crypto from 'node:crypto';
 import * as versions from './versions.js';
-import { billingEnabled, checkout, blestaLink, ensureClient, syncUser, onWebhook, startBillingSync, WEBHOOK_KEY } from './billing.js';
+import { billingEnabled, checkout, blestaLink, ensureClient, syncUser, onWebhook, startBillingSync, WEBHOOK_KEY, registerDomain, FREE_TLDS, tldOf, BillingError } from './billing.js';
+import { registrarEnabled, isAvailable, pointDomain, NAMESERVERS } from './registrar.js';
 import { deleteSite, deleteAccount, diskUsage, startCleanup } from './cleanup.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -917,17 +918,28 @@ app.post('/api/sites/:id/unpublish', requireAuth, wrap(async (req, res) => {
 // ---- own domain (paid plans) -----------------------------------------------------------------
 // The client points their domain to us (A + www), we check the DNS, and once it is right the site answers on it.
 const domainAllowed = (u) => u.role === 'admin' || !!planOf(u).customDomain;
+/** The free domain can be registered here (paid plan, Blesta and the registrar set up, the admin registers in Blesta). */
+const canRegister = (u) => u.role !== 'admin' && !!planOf(u).customDomain && billingEnabled() && registrarEnabled() && SITES_IPS.length > 0;
+/** Write the DNS records of a domain we registered; remembered so the check retries it until it works. */
+async function setupRegistered(meta) {
+  const d = meta.domain;
+  if (!d?.registered || d.dnsSet) return;
+  try { await pointDomain(d.name, SITES_IPS[0], CNAME_TARGET); d.dnsSet = true; console.log(`[domains] DNS set for ${d.name}`); }
+  catch (e) { console.error(`[domains] DNS for ${d.name} not set yet:`, e.message); }
+}
 async function domainInfo(meta, user, dnsNow = null) {
   const d = meta.domain || null;
   return {
     domain: d, allowed: domainAllowed(user), url: siteUrl(meta), published: !!meta.publishedAt, dirty: !!meta.dirty,
     records: d ? dnsRecords(d.name) : [], dns: dnsNow, ip: SITES_IPS[0] || null,
+    register: { ready: canRegister(user), tlds: [...FREE_TLDS].sort((a, b) => ['.co.uk', '.uk', '.org.uk'].indexOf(a) - ['.co.uk', '.uk', '.org.uk'].indexOf(b)), used: user.freeDomain?.name || null, name: user.name || '' },
   };
 }
 /** Look at the DNS of one site's domain and switch it live (or back) when needed. Saves the meta. */
 async function refreshDomain(meta, owner, { notify = true } = {}) {
   const d = meta.domain;
   if (!d) return null;
+  await setupRegistered(meta);
   const was = d.status;
   let check = null;
   if (owner && !domainAllowed(owner)) d.status = 'paused';
@@ -951,11 +963,59 @@ async function refreshDomain(meta, owner, { notify = true } = {}) {
 }
 startDomainCheck(async () => {
   for (const s of await store.listSites()) {
-    if (!s.domain || (s.domain.status === 'live' && domainAllowed(await users.get(s.owner) || { role: 'admin' }))) continue;
+    if (!s.domain || (s.domain.status === 'live' && (!s.domain.registered || s.domain.dnsSet) && domainAllowed(await users.get(s.owner) || { role: 'admin' }))) continue;
     const meta = await store.readMeta(s.id).catch(() => null);
     if (meta?.domain) await refreshDomain(meta, await users.get(meta.owner));
   }
 });
+
+// ---- the free domain of a paid plan: search, then register in the client's name ----------------
+const PREFER = ['.co.uk', '.uk', '.org.uk'];
+app.get('/api/domains/search', requireAuth, wrap(async (req, res) => {
+  if (!canRegister(req.user)) return res.status(403).json({ error: 'Free domains come with every paid plan.' });
+  if (req.user.freeDomain) return res.status(409).json({ error: `Your plan's free domain is ${req.user.freeDomain.name}.` });
+  if (limit('dsearch:' + req.user.id, 40, 600000, 600000)) return res.status(429).json({ error: 'Too many searches. Try again in a few minutes.' });
+  const label = String(req.query.q || '').trim().toLowerCase().replace(/^[a-z]+:\/\//, '').replace(/^www\./, '').split(/[./]/)[0].replace(/\s+/g, '').replace(/[^a-z0-9-]/g, '').replace(/^-+|-+$/g, '').slice(0, 63);
+  if (label.length < 2) return res.status(400).json({ error: 'Type at least 2 letters or numbers.' });
+  const rank = (t) => (PREFER.includes(t) ? PREFER.indexOf(t) : 99);
+  const tlds = [...FREE_TLDS].sort((a, b) => rank(a) - rank(b));
+  const used = new Set((await store.listSites()).map((s2) => s2.domain?.name).filter(Boolean));
+  const results = await Promise.all(tlds.map(async (t) => {
+    const name = label + t;
+    return { name, tld: t, available: used.has(name) ? false : await isAvailable(name) };
+  }));
+  res.json({ label, results });
+}));
+app.post('/api/sites/:id/domain/register', requireAuth, wrap(async (req, res) => {
+  const meta = await siteFor(req);
+  const u = req.user;
+  if (!canRegister(u)) return res.status(403).json({ error: 'Free domains come with every paid plan.' });
+  if (u.freeDomain) return res.status(409).json({ error: `Your plan's free domain is already ${u.freeDomain.name}. You can connect it to this site instead.` });
+  if (limit('dreg:' + u.id, 5, 3600000, 3600000)) return res.status(429).json({ error: 'Too many tries. Try again in an hour.' });
+  const name = cleanDomainInput(req.body.domain);
+  if (!name || !tldOf(name)) return res.status(400).json({ error: `Choose a name ending in ${FREE_TLDS.join(', ')}.` });
+  const w = req.body.who || {};
+  const t = (v, n = 120) => String(v ?? '').trim().slice(0, n);
+  const who = {
+    firstName: t(w.firstName, 60), lastName: t(w.lastName, 60), company: t(w.company), address1: t(w.address1), address2: t(w.address2),
+    city: t(w.city, 60), postcode: t(w.postcode, 10).toUpperCase(), phone: t(w.phone, 20).replace(/[^\d+]/g, ''),
+    type: ['IND', 'STRA', 'LTD'].includes(w.type) ? w.type : 'IND', companyNumber: t(w.companyNumber, 10).toUpperCase(),
+  };
+  const missing = [['firstName', 'first name'], ['lastName', 'last name'], ['address1', 'address'], ['city', 'town or city'], ['postcode', 'postcode'], ['phone', 'phone number']].filter(([k]) => !who[k]).map(([, l]) => l);
+  if (missing.length) return res.status(400).json({ error: `Please fill in your ${missing.join(', ')}.` });
+  if (!/^[A-Z]{1,2}\d[A-Z\d]? ?\d[A-Z]{2}$/.test(who.postcode)) return res.status(400).json({ error: 'This does not look like a UK postcode.' });
+  if (who.phone.replace(/\D/g, '').length < 10) return res.status(400).json({ error: 'Please check your phone number.' });
+  if (who.type === 'LTD' && !/^[A-Z0-9]{8}$/.test(who.companyNumber)) return res.status(400).json({ error: 'Your company number has 8 characters, like 01234567 or SC123456.' });
+  if ((who.type === 'LTD' || who.type === 'STRA') && !who.company) return res.status(400).json({ error: 'Please give the name of your business.' });
+  if ((await store.listSites()).some((s2) => s2.domain?.name === name)) return res.status(409).json({ error: 'This domain is already used by another website.' });
+  if ((await isAvailable(name)) !== true) return res.status(409).json({ error: `${name} is not available. Try another name.` });
+  try { await registerDomain(u, name, who, NAMESERVERS); }
+  catch (e) { return res.status(e instanceof BillingError ? 400 : 502).json({ error: e instanceof BillingError ? e.message : 'Registration is not available right now. Please try again in a few minutes.' }); }
+  if (liveDomain(meta)) { meta.domain.status = 'pending'; await setRemoteDomain(meta).catch(() => {}); }
+  meta.domain = { name, status: 'pending', registered: true, dnsSet: false, addedAt: new Date().toISOString(), checkedAt: null, error: null };
+  const check = await refreshDomain(meta, u);
+  res.json(await domainInfo(meta, u, check));
+}));
 
 app.get('/api/sites/:id/domain', requireAuth, wrap(async (req, res) => {
   const meta = await siteFor(req);

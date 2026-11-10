@@ -14,6 +14,7 @@
 //   BLESTA_SHARED_KEY   key of the Shared Login plugin (Settings → Company → Plugins → Shared Login → Manage)
 //   BLESTA_PACKAGES     essential:25,plus:26,pro:27   (Blesta package id of each plan)
 //   BLESTA_WEBHOOK_KEY  long random text, also in the URL given to Blesta's Webhooks plugin
+//   BLESTA_DOMAIN_PACKAGES  .uk:10,.co.uk:11,.org.uk:12  (Blesta TLD package of each extension offered free with a paid plan)
 import crypto from 'node:crypto';
 import * as users from './users.js';
 import { PLANS } from './plans.js';
@@ -26,6 +27,10 @@ export const WEBHOOK_KEY = process.env.BLESTA_WEBHOOK_KEY || '';
 const PACKAGES = Object.fromEntries(String(process.env.BLESTA_PACKAGES || '').split(',').map((x) => x.trim().split(':')).filter(([k, v]) => k && /^\d+$/.test(v || '')).map(([k, v]) => [k, Number(v)]));
 const PLAN_OF_PACKAGE = Object.fromEntries(Object.entries(PACKAGES).map(([k, v]) => [v, k]));
 const RANK = { free: 0, essential: 1, plus: 2, pro: 3 };
+const DOMAIN_PACKAGES = Object.fromEntries(String(process.env.BLESTA_DOMAIN_PACKAGES || '.uk:10,.co.uk:11,.org.uk:12').split(',').map((x) => x.trim().split(':')).filter(([k, v]) => /^\.[a-z.]+$/.test(k || '') && /^\d+$/.test(v || '')).map(([k, v]) => [k, Number(v)]));
+/** Extensions offered free with a paid plan, longest first (".co.uk" before ".uk"). */
+export const FREE_TLDS = Object.keys(DOMAIN_PACKAGES).sort((a, b) => b.length - a.length);
+export const tldOf = (domain) => FREE_TLDS.find((t) => domain.endsWith(t) && /^[a-z0-9-]+$/.test(domain.slice(0, -t.length))) || null;
 
 export const billingEnabled = () => !!(URL_ && API_USER && API_KEY && SHARED && Object.keys(PACKAGES).length);
 if (!billingEnabled()) console.warn('[billing] Blesta is not set up (BLESTA_URL, BLESTA_API_USER, BLESTA_API_KEY, BLESTA_SHARED_KEY, BLESTA_PACKAGES): plans can only be chosen, not paid.');
@@ -135,6 +140,44 @@ export async function checkout(u, planId) {
 }
 
 /**
+ * Register the free domain of a paid plan, in the client's name, through Blesta (which asks the registrar).
+ * `who` = { firstName, lastName, company, address1, address2, city, postcode, phone, type: IND|STRA|LTD, companyNumber }.
+ * The service is free (price override 0) and renews with the plan. Throws BillingError with a readable message.
+ */
+export async function registerDomain(u, domain, who, nameservers) {
+  const tld = tldOf(domain);
+  if (!tld) throw new BillingError('This extension is not included with your plan.');
+  const b = await ensureClient(u);
+  const client = await api('clients', 'get', { client_id: b.clientId });
+  // the client's contact details are the domain's legal owner (Nominet needs a real UK address)
+  await api('contacts', 'edit', {
+    contact_id: client.contact_id,
+    vars: {
+      first_name: who.firstName, last_name: who.lastName, company: who.company || '',
+      address1: who.address1, address2: who.address2 || '', city: who.city, zip: who.postcode, country: 'GB',
+      numbers: [{ number: who.phone, type: 'phone', location: 'work' }],
+    },
+  }, 'POST');
+  const price = await pricingOf(DOMAIN_PACKAGES[tld]);
+  const vars = {
+    client_id: b.clientId, pricing_id: price.id, status: 'active', use_module: 'true', qty: 1,
+    domain, override_price: 0, override_currency: 'GBP',
+    DotUkOrgType: who.type, ...(who.type === 'LTD' && who.companyNumber ? { DotUkRegistrationNumber: who.companyNumber } : {}),
+  };
+  nameservers.slice(0, 5).forEach((ns, i) => { vars['ns' + (i + 1)] = ns; });
+  let serviceId;
+  try { serviceId = await api('services', 'add', { vars }, 'POST'); }
+  catch (e) {
+    console.error(`[billing] register ${domain} for ${u.id}:`, e.message);
+    throw new BillingError('The registry did not accept this registration. Check your details, or try another name. If it keeps failing, contact us.');
+  }
+  u.freeDomain = { name: domain, serviceId: Number(serviceId), at: new Date().toISOString() };
+  await users.save(u);
+  console.log(`[billing] ${u.id}: registered ${domain} (service ${serviceId})`);
+  return u.freeDomain;
+}
+
+/**
  * Read the client's ili studio services from Blesta and set their plan:
  * the best active package wins; none active → Free (sites and content are kept, only the limits change).
  * Paid plans get their monthly AI credits topped up.
@@ -149,6 +192,9 @@ export async function syncUser(u) {
     u.plan = best; u.planChosen = true;
     if (u.wantsPlan === best || best === 'free') u.wantsPlan = null;
     console.log(`[billing] ${u.id}: ${before} → ${best}`);
+    // the free domain stays theirs; it renews free only while a paid plan is active: flag it for the admin
+    if (best === 'free' && u.freeDomain && !u.freeDomain.planEndedAt) { u.freeDomain.planEndedAt = new Date().toISOString(); console.warn(`[billing] ${u.id}: plan ended, free domain ${u.freeDomain.name} (service ${u.freeDomain.serviceId}) should renew at the normal price`); }
+    if (best !== 'free' && u.freeDomain?.planEndedAt) delete u.freeDomain.planEndedAt;
   }
   const plan = PLANS.find((p) => p.id === u.plan);
   if (plan && plan.price > 0) {

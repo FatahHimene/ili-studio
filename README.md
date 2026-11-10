@@ -308,3 +308,21 @@ Réglages :
 - ili-studio : `SITES_IP` = adresse IP publique du VPS (plusieurs séparées par des virgules) ; `SITES_CNAME` (par défaut `connect.yela.uk`).
 - ili-sites : volume `/data/coolify/proxy/dynamic` (hôte) → `/traefik` (conteneur), et `TRAEFIK_DIR=/traefik`. `TRAEFIK_TARGET` (par défaut `http://ili-sites:3000`).
 - Cloudflare : `connect.yela.uk` en `A` vers l'IP du VPS, **proxy désactivé (nuage gris)**.
+
+### Domaine offert (enregistré chez nous)
+
+Avec une offre payante, le client a droit à **un domaine offert par compte**, en `.co.uk`, `.uk` ou `.org.uk` (fenêtre Domaine, *Get a new domain, free*) :
+
+1. Il cherche un nom. ili studio interroge Internet.bs pour les trois extensions.
+2. Il choisit un nom, puis remplit le titulaire : lui-même, son entreprise individuelle ou sa société (avec le numéro d'entreprise), l'adresse au Royaume-Uni et le téléphone. Ces coordonnées mettent à jour son contact dans Blesta.
+3. ili studio crée dans Blesta un service domaine à **0 £** (prix forcé), avec le module, qui enregistre le domaine chez Internet.bs à son nom. Les serveurs DNS sont ceux d'Internet.bs (`REG_NAMESERVERS`).
+4. ili studio écrit dans le DNS d'Internet.bs `A @ → SITES_IP` et `CNAME www → connect.yela.uk`, en réessayant toutes les 10 minutes si besoin. Le domaine passe ensuite `live` tout seul, comme un domaine branché.
+
+Le domaine est noté dans le compte (`freeDomain`). Le client peut le remettre sur un autre de ses sites en un clic (*Use my free domain*). Si l'offre redevient gratuite, le domaine reste à lui. Un avertissement apparaît dans les logs (`should renew at the normal price`) pour que l'admin retire le prix à 0 dans Blesta.
+
+Réglages (ili-studio) :
+- `INTERNETBS_API_KEY`, `INTERNETBS_PASSWORD`. L'IP du VPS doit être autorisée pour l'API dans le compte Internet.bs. `INTERNETBS_TEST=1` utilise l'API de test.
+- `BLESTA_DOMAIN_PACKAGES` (par défaut `.uk:10,.co.uk:11,.org.uk:12`) : l'offre Blesta de chaque extension offerte. Il faut un prix 1 an en GBP.
+- Le compte Internet.bs doit avoir du crédit : c'est lui qui paie l'enregistrement.
+
+Le transfert de domaine viendra plus tard. On attend de savoir si le registrar change.

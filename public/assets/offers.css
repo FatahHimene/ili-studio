@@ -102,3 +102,12 @@
 .dnext { background: #FFF8E1; border: 1px solid #E8D48A; border-radius: var(--r2); padding: 14px 16px; display: grid; gap: 8px; }
 .dnext p { margin: 0; font-size: 14px; color: var(--slate); }
 .dnext.ok { background: #F4FBDD; border-color: #C8E27A; }
+.dres { display: grid; gap: 8px; }
+.dhit { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--grid); border-radius: var(--r2); }
+.dhit b { font: 600 15px var(--mono); margin-right: auto; }
+.dhit.off b { color: var(--slate); font-weight: 500; }
+.downer label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; }
+.downer .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.downer [hidden] { display: none !important; }
+.downer .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+@media (max-width: 560px) { .downer .two { grid-template-columns: 1fr; } }
